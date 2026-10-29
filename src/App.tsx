@@ -28,6 +28,7 @@ import { HalloweenBackdrop } from './components/HalloweenBackdrop';
 import { AppSettingsModal, type AppFont } from './components/AppSettingsModal';
 import { AuthSettingsModal, type ModalTab } from './components/AuthSettingsModal';
 import { ReplayModal } from './components/ReplayModal';
+import { KnockoutQualificationNotice } from './components/KnockoutQualificationNotice';
 import { ActiveMatchArena, type ActiveMatchSession } from './components/ActiveMatchArena';
 import { OverviewView } from './views/OverviewView';
 import { BotLabView } from './views/BotLabView';
@@ -601,6 +602,7 @@ function AppWorkspace() {
       />
 
       {/* SHA-256 Verified Replay Modal */}
+      <KnockoutQualificationNotice userId={user?.id} onOpenTournament={id => { setSelectedTournamentId(id); setActiveView('tournaments'); }} />
       <ReplayModal
         open={replayState.open}
         replayData={replayState.data}

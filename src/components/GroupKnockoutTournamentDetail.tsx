@@ -3,6 +3,9 @@ import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, Search, Settings
 import { backendClient, type BackendUser, type TournamentItem } from '../core/backendClient';
 import { KnockoutSetup } from './KnockoutSetup';
 import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
+import { KnockoutBattleZone } from './KnockoutBattleZone';
+import { KnockoutFinal } from './KnockoutFinal';
+import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
 import { useToast } from './ToastProvider';
@@ -92,7 +95,8 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
   const [showKnockoutSetup, setShowKnockoutSetup] = useState(false);
   const [eligibilityMinimum, setEligibilityMinimum] = useState<number | null>(null);
   const [showResults, setShowResults] = useState(false);
-  const [activeTournamentTab, setActiveTournamentTab] = useState<'groups' | 'knockout'>('groups');
+  const [showBattleZone, setShowBattleZone] = useState(false);
+  const [activeTournamentTab, setActiveTournamentTab] = useState<'groups' | 'knockout'>(() => ['knockout', 'completed'].includes(tournament.status) ? 'knockout' : 'groups');
   const [resultsFor, setResultsFor] = useState<'all' | 'mine'>('all');
   const [resultSearch, setResultSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -127,12 +131,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     : 0;
   const bracketRows = Math.max(1, openingMatchCount);
   const bracketGridRows = Math.max(2, bracketRows * 2 - 2);
-  const knockoutRoundTitles = useMemo(() => {
-    if (openingMatchCount >= 16) {
-      return ['Vòng 1/16', 'Vòng 1/8', 'Tứ Kết', 'Bán Kết', 'Chung kết'];
-    }
-    return ['Vòng 1/8', 'Tứ Kết', 'Bán Kết', 'Chung kết'];
-  }, [openingMatchCount]);
+  const finalFixture = knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0];
   const participantAvatars = useMemo(() => {
     const participants = new Map<string, { avatarId?: string; avatarUrl?: string | null }>();
     for (const group of groups) {
@@ -266,14 +265,9 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     }
   };
 
-  const champion = fixtures
-    .filter((fixture: any) =>
-      fixture.phase === 'knockout' && fixture.status === 'completed' && fixture.winner
-    )
-    .sort((first: any, second: any) => second.round_number - first.round_number)[0]?.winner;
-
   return (
     <div className="space-y-5">
+      {showBattleZone && <KnockoutBattleZone tournamentId={tournament.id} tournamentName={tournament.name} fixtures={knockoutFixtures} avatars={participantAvatars} userId={user?.id} themeMode={themeMode} onClose={() => setShowBattleZone(false)} />}
       {eligibilityMinimum !== null && <TournamentEligibilityDialog minimum={eligibilityMinimum} elo={user?.elo} onClose={() => setEligibilityMinimum(null)} />}
       {Number(tournament.min_elo || 0) > 0 && <p className="text-xs text-[var(--text-secondary)]">Điều kiện đăng ký: Elo từ {tournament.min_elo} trở lên.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -785,6 +779,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 </div>
                 {bracketRoundCount > 0 && (
                   <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setShowBattleZone(true)} className="inline-flex items-center gap-2 rounded-xl border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-bold text-[var(--accent-primary)] hover:bg-orange-500/20"><Swords className="h-4 w-4" />Battle Zone</button>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
                       <UsersRound className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
                       {openingMatchCount * 2} suất
@@ -796,7 +791,25 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 )}
               </div>
               {bracketRoundCount > 0 ? (
-                <div className="relative overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-2 sm:p-3">
+                <>
+                <div className="space-y-4 lg:hidden">
+                  {knockoutRounds.map(([round, roundFixtures]) => <div key={round} className="space-y-2">
+                    <h4 className="text-xs font-bold text-[var(--accent-primary)]">{knockoutRoundLabel(openingMatchCount, round)}</h4>
+                    {roundFixtures.map(fixture => <article key={fixture.id} className={`rounded-xl border bg-[var(--bg-canvas)] p-4 ${user && [fixture.player1_id,fixture.player2_id].includes(user.id) ? 'border-orange-400/60' : 'border-[var(--border-subtle)]'}`}>
+                      {round === bracketRoundCount ? <KnockoutFinal final={fixture} userId={user?.id} /> : <>
+                        {[1,2].map(seat => <div key={seat} className="flex items-center justify-between gap-3 py-2 text-sm">
+                          <span className={`flex min-w-0 items-center gap-2 ${fixture[`player${seat}_id`] === user?.id ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : fixture.winner_id === fixture[`player${seat}_id`] ? 'font-bold text-emerald-300' : ''}`}>
+                            <TournamentAvatar {...participantAvatars.get(fixture[`player${seat}_id`])} name={fixture[`player${seat}`]} />
+                            <span className="break-words">{fixture[`player${seat}`]}{fixture[`player${seat}_id`] === user?.id ? ' (Bạn)' : ''}</span>
+                          </span><strong className="shrink-0 font-mono">{Number(fixture[`player${seat}_score`] || 0)}</strong>
+                        </div>)}
+                        <p className="mt-2 text-[10px] text-[var(--text-muted)]">{fixture.status === 'completed' ? 'Đã kết thúc' : fixture.status === 'active' ? 'Đang thi đấu' : 'Chờ thi đấu'} · {fixture.series_best_of === 3 ? 'BO3' : 'BO1'}</p>
+                      </>}
+                    </article>)}
+                  </div>)}
+                  {!knockoutRounds.length && <p className="p-4 text-sm text-[var(--text-muted)]">Chưa công bố cặp đấu Knock-Out.</p>}
+                </div>
+                <div className="relative hidden overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-2 sm:p-3 lg:block">
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(249,115,22,0.07),transparent_58%)]" />
                   <div
                     className="relative mx-auto grid w-full max-w-[1120px] items-stretch gap-x-1.5 gap-y-1.5 sm:gap-x-2"
@@ -837,7 +850,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                           const connectorClass = side === 'left'
                             ? "after:absolute after:top-1/2 after:-right-3 after:h-px after:w-3 after:bg-[var(--border-subtle)] after:content-['']"
                             : "before:absolute before:top-1/2 before:-left-3 before:h-px before:w-3 before:bg-[var(--border-subtle)] before:content-['']";
-                          const label = knockoutRoundTitles[roundIndex] ?? `Vòng ${roundNumber}`;
+                          const label = knockoutRoundLabel(openingMatchCount, roundNumber);
                           return (
                             <article
                               key={`${roundNumber}-${matchIndex}`}
@@ -857,7 +870,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                     avatarUrl={participantAvatars.get(fixture?.player1_id || '')?.avatarUrl}
                                     name={fixture?.player1 || '?'}
                                   />
-                                  <span className="min-w-0 truncate">{fixture?.player1 || '?'}</span>
+                                  <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${fixture?.player1_id === user?.id && user ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : ''}`}>{fixture?.player1 || '?'}{fixture?.player1_id === user?.id && user ? ' (Bạn)' : ''}</span>
                                 </span>
                                 {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player1_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player1_id && <span className="shrink-0">✓</span>}
                               </div>
@@ -869,7 +882,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                     avatarUrl={participantAvatars.get(fixture?.player2_id || '')?.avatarUrl}
                                     name={fixture?.player2 || '?'}
                                   />
-                                  <span className="min-w-0 truncate">{fixture?.player2 || '?'}</span>
+                                  <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${fixture?.player2_id === user?.id && user ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : ''}`}>{fixture?.player2 || '?'}{fixture?.player2_id === user?.id && user ? ' (Bạn)' : ''}</span>
                                 </span>
                                 {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player2_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player2_id && <span className="shrink-0">✓</span>}
                               </div>
@@ -877,7 +890,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                 <p className="mt-1 text-[9px] text-[var(--text-muted)]">
                                   {fixture.series_best_of === 3 && `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)} · `}
                                   {fixture.status === 'completed'
-                                  ? fixture.winner ? `Vào vòng sau: ${fixture.winner}` : 'Hòa · đấu lại'
+                                  ? fixture.winner ? <span className={fixture.winner_id === user?.id ? 'font-bold text-orange-300' : ''}>Vào vòng sau: {fixture.winner}{fixture.winner_id === user?.id ? ' (Bạn)' : ''}</span> : 'Hòa · đấu lại'
                                     : fixture.status === 'active' ? `Đang đánh ${Number(fixture.games_played || 0) >= 3 ? 'ván phụ' : 'ván ' + (Number(fixture.games_played || 0) + 1)}` : 'Chờ thi đấu'}
                                 </p>
                               )}
@@ -893,39 +906,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                         gridRow: `1 / span ${bracketGridRows}`,
                       }}
                     >
-                      <Trophy className="mx-auto mb-2 h-6 w-6 text-[var(--accent-primary)]" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-primary)]">
-                        Chung kết
-                      </span>
-                      <div className="mt-3 flex items-center justify-center gap-1.5 truncate text-xs text-[var(--text-primary)]">
-                        <TournamentAvatar
-                          avatarId={participantAvatars.get(knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player1_id || '')?.avatarId}
-                          avatarUrl={participantAvatars.get(knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player1_id || '')?.avatarUrl}
-                          name={knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player1 || '?'}
-                        />
-                        <strong className="truncate">
-                          {knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player1 || '?'}
-                        </strong>
-                      </div>
-                      <span className="my-2 text-sm font-bold text-[var(--accent-primary)]">
-                        {(() => {
-                          const final = knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0];
-                          return final?.series_best_of === 3 ? `${Number(final.player1_score || 0)}–${Number(final.player2_score || 0)} · BO3` : 'vs';
-                        })()}
-                      </span>
-                      <div className="flex items-center justify-center gap-1.5 truncate text-xs text-[var(--text-primary)]">
-                        <TournamentAvatar
-                          avatarId={participantAvatars.get(knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player2_id || '')?.avatarId}
-                          avatarUrl={participantAvatars.get(knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player2_id || '')?.avatarUrl}
-                          name={knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player2 || '?'}
-                        />
-                        <strong className="truncate">
-                          {knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player2 || '?'}
-                        </strong>
-                      </div>
+                      <KnockoutFinal final={finalFixture} userId={user?.id} />
                     </article>
                   </div>
                 </div>
+                </>
               ) : (
                 <div className="rounded-xl border border-dashed border-[var(--border-subtle)] p-8 text-center text-sm text-[var(--text-muted)]">
                   Nhánh knock-out sẽ được hiển thị sau khi có danh sách bảng đấu.
@@ -934,14 +919,6 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             </section>
           )}
 
-          {activeTournamentTab === 'knockout' && tournament.status === 'completed' && (
-            <section className="rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
-              <h3 className="font-bold text-[var(--accent-primary)]">Nhà vô địch</h3>
-              <p className="mt-2 text-lg font-bold">
-                {champion || 'Chưa có dữ liệu nhà vô địch'}
-              </p>
-            </section>
-          )}
         </>
       )}
 

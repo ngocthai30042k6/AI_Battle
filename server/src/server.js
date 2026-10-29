@@ -21,6 +21,7 @@ import {
 import { areBothMatchPlayersOffline } from './match-disconnect.js';
 import { prepareServerKnockout, startServerKnockout, completeServerKnockoutGame } from './knockout-series.js';
 import { persistMatchRelay } from './match-relay.js';
+import { getKnockoutNotices, getPublicKnockoutMatches, getReplayForViewer } from './knockout-public.js';
 import { registerMatchSessionKey } from './session-key.js';
 import { updateGroupEntryScore } from './group-entry-score.js';
 import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
@@ -1884,6 +1885,13 @@ const httpServer = createServer(async (req, res) => {
       if (!user || !await verifyPassword(String(body.password || ''), user.password_hash)) return json(res, 401, { error: 'Email or password is incorrect' });
       return json(res, 200, { token: createToken(user, config.jwtSecret), user: publicUser(user) });
     }
+    if (req.method === 'GET' && url.pathname === '/api/me/knockout-notices') {
+      const auth = authFromHeader(req);
+      return json(res, 200, { notices: await getKnockoutNotices(pool, auth.sub) });
+    }
+    if (req.method === 'GET' && /^\/api\/tournaments\/[0-9a-f-]+\/knockout-matches$/i.test(url.pathname)) {
+      return json(res, 200, { matches: await getPublicKnockoutMatches(pool, url.pathname.split('/')[3], replayStorage.enabled) });
+    }
     if (req.method === 'GET' && url.pathname === '/api/tournaments') {
       await updateTournamentLifecycle();
       const result = await pool.query(
@@ -2602,11 +2610,10 @@ const httpServer = createServer(async (req, res) => {
       return json(res, 200, { matches: result.rows });
     }
     if (req.method === 'GET' && /^\/api\/matches\/[0-9a-f-]+\/replay$/i.test(url.pathname)) {
-      const auth = authFromHeader(req);
+      const auth = optionalAuthFromHeader(req);
       const matchId = url.pathname.split('/')[3];
-      const result = await pool.query('SELECT replay_json,replay_key,player1_id,player2_id FROM matches WHERE id=$1 AND status=\'completed\'', [matchId]);
-      const match = result.rows[0];
-      if (!match || ![match.player1_id, match.player2_id].includes(auth.sub)) return json(res, 404, { error: 'Replay not found' });
+      const match = await getReplayForViewer(pool, matchId, auth?.sub);
+      if (!match) return json(res, 404, { error: 'Replay not found' });
       if (match.replay_json) return json(res, 200, { replay: match.replay_json });
       const downloadUrl = await replayStorage.getUrl(match.replay_key);
       if (!downloadUrl) return json(res, 404, {

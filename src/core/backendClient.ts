@@ -339,7 +339,7 @@ export class BackendClient {
   }
 
   async getMatchReplay(matchId: string) {
-    const res = await this.request(`/api/matches/${encodeURIComponent(matchId)}/replay`, 'GET', undefined, true);
+    const res = await this.request(`/api/matches/${encodeURIComponent(matchId)}/replay`);
     if (res.replay) return res.replay;
     if (res.downloadUrl) {
       const dl = await fetch(res.downloadUrl);
@@ -367,6 +367,16 @@ export class BackendClient {
 
   async getTournamentDetail(id: string) {
     return this.request(`/api/tournaments/${encodeURIComponent(id)}`);
+  }
+
+  async getKnockoutNotices(): Promise<Array<{ id: string; name: string; knockout_starts_at?: string }>> {
+    const res = await this.request('/api/me/knockout-notices', 'GET', undefined, true);
+    return res.notices || [];
+  }
+
+  async getKnockoutMatches(id: string): Promise<any[]> {
+    const res = await this.request(`/api/tournaments/${encodeURIComponent(id)}/knockout-matches`);
+    return res.matches || [];
   }
 
   async createTournament(payload: {

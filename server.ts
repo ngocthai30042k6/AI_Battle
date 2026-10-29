@@ -19,6 +19,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { knockoutConfiguration, knockoutStartTime, newKnockoutSeries, recordKnockoutGame } from './server/src/knockout-series.js';
 import { minimumTournamentElo, requireTournamentElo } from './server/src/tournament-eligibility.js';
 import { playServerBotMatch } from './server/src/server-bot-match.js';
+import { qualifiedForKnockout } from './server/src/knockout-public.js';
 import {
   TOURNAMENT_RANKS,
   applySprintRankReset,
@@ -1765,9 +1766,12 @@ export async function startServer(options: ServerStartOptions = {}) {
 
   app.get('/api/matches/:id/replay', (req: Request, res: Response) => {
     try {
-      const user = getAuthUser(req);
+      const user = getOptionalAuthUser(req);
       const match = db.matches.find((m) => m.id === req.params.id && m.status === 'completed');
-      if (!match || (match.player1_id !== user.id && match.player2_id !== user.id)) {
+      const fixture = match && db.tournamentFixtures.find(f => f.id === match.tournament_fixture_id && f.tournament_id === match.tournament_id);
+      const tournament = match && db.tournaments.find(t => t.id === match.tournament_id);
+      const isPublic = fixture?.phase === 'knockout' && tournament?.format === 'group_knockout' && tournament.status !== 'cancelled';
+      if (!match || (!isPublic && match.player1_id !== user?.id && match.player2_id !== user?.id)) {
         res.status(404).json({ error: 'Không tìm thấy dữ liệu replay của trận đấu này.' });
         return;
       }
@@ -1782,6 +1786,32 @@ export async function startServer(options: ServerStartOptions = {}) {
     } catch (err: any) {
       res.status(err.status || 500).json({ error: err.message });
     }
+  });
+
+  app.get('/api/me/knockout-notices', (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      const notices = db.tournaments.filter(t => t.format === 'group_knockout' &&
+        qualifiedForKnockout(user.id, t, db.tournamentEntries.filter(e => e.tournament_id === t.id), db.tournamentFixtures.filter(f => f.tournament_id === t.id)))
+        .map(t => ({ id: t.id, name: t.name, status: t.status, knockout_starts_at: t.knockout_starts_at }));
+      res.json({ notices });
+    } catch (err: any) { res.status(err.status || 500).json({ error: err.message }); }
+  });
+
+  app.get('/api/tournaments/:id/knockout-matches', (req: Request, res: Response) => {
+    const tournament = db.tournaments.find(t => t.id === req.params.id && t.format === 'group_knockout' && t.status !== 'cancelled');
+    const matches = tournament ? db.matches.filter(m => m.tournament_id === tournament.id).flatMap(m => {
+      const fixture = db.tournamentFixtures.find(f => f.id === m.tournament_fixture_id && f.tournament_id === tournament.id && f.phase === 'knockout');
+      if (!fixture) return [];
+      return [{ id: m.id, tournament_fixture_id: fixture.id, status: m.status,
+        player1_id: m.player1_id, player2_id: m.player2_id, winner_id: m.winner_id,
+        player1: db.users.find(u => u.id === m.player1_id)?.display_name || 'Đấu thủ',
+        player2: db.users.find(u => u.id === m.player2_id)?.display_name || 'Đấu thủ',
+        round_number: fixture.round_number, match_number: fixture.match_number, leg: fixture.leg,
+        move_count: m.final_step_count, created_at: m.created_at, completed_at: m.completed_at,
+        replay_available: Boolean(m.replay_json) }];
+    }) : [];
+    res.json({ matches });
   });
 
   app.get('/api/tournaments', (_req: Request, res: Response) => {
