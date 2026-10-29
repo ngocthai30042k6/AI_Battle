@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, Loader2, Play, RefreshCw, Swords, X } from 'lucide-react';
+import { Loader2, Play, RefreshCw, Swords, X } from 'lucide-react';
 import { backendClient, PLAYER_AVATARS } from '../core/backendClient';
 import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { KnockoutFinal } from './KnockoutFinal';
@@ -86,7 +86,6 @@ export function KnockoutBattleZone({ tournamentId, tournamentName, fixtures, ava
                       <div className="text-center"><Swords className="mx-auto mb-2 h-5 w-5 text-purple-400" /><strong className="whitespace-nowrap font-mono text-xl text-orange-400">{fixture.series_best_of === 3 ? `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)}` : fixture.winner_id ? fixture.winner_id === fixture.player1_id ? '1–0' : '0–1' : 'vs'}</strong></div>
                       {player(fixture.player2_id,fixture.player2,fixture.winner_id === fixture.player2_id)}
                     </div>
-                    {fixture.winner_id && <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-yellow-400/20 bg-yellow-500/5 p-3"><ArrowRight className="h-4 w-4 shrink-0 text-yellow-400" /><span className="text-sm font-bold text-yellow-300">Đi tiếp: {fixture.winner}{fixture.winner_id === userId ? ' (Bạn)' : ''}</span></div>}
                   </>}
                   <div className="mt-5 space-y-2 border-t border-[var(--border-subtle)] pt-4">
                     {!games.length && <p className="text-xs text-[var(--text-muted)]">Chưa có ván đấu được ghi nhận.</p>}

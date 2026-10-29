@@ -74,6 +74,7 @@ export const Board9x9: React.FC<Board9x9Props> = ({
 
           <div
             role="grid"
+            data-ui-feedback="off"
             aria-label="Bàn cờ chiến thuật 9x9 OTTv2"
             className="flex-1 aspect-square grid grid-cols-9 grid-rows-9 rounded-2xl overflow-hidden border-2 border-[#382954] bg-[#161024] shadow-xl"
           >

@@ -22,6 +22,7 @@ import {
 } from './core/backendClient';
 import { SAMPLE_BOTS } from './core/sampleBots';
 import { soundFx } from './core/soundFx';
+import { installButtonFeedback } from './core/buttonFeedback';
 import { backgroundMusic } from './core/backgroundMusic';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { HalloweenBackdrop } from './components/HalloweenBackdrop';
@@ -65,6 +66,7 @@ const VIEW_TITLES: Record<NavView, string> = {
 
 function AppWorkspace() {
   const { notify } = useToast();
+  useEffect(() => installButtonFeedback(), []);
 
   // Sound FX state
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundFx.enabled);

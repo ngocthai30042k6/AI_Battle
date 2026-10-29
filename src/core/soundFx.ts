@@ -53,6 +53,7 @@ class SoundEngine {
   }
 
   private tone(freq: number, duration: number, type: OscillatorType = 'sine', gainPeak = 0.08, delay = 0) {
+    if (!this.enabled || this.volume <= 0) return;
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime + delay;
@@ -71,6 +72,15 @@ class SoundEngine {
 
   playSelect() {
     this.tone(520, 0.06, 'triangle', 0.05);
+  }
+
+  playClick() {
+    try {
+      this.tone(640, 0.045, 'sine', 0.035);
+      this.tone(920, 0.055, 'triangle', 0.015, 0.018);
+    } catch {
+      // Audio support must never prevent a button from working.
+    }
   }
 
   playMove() {

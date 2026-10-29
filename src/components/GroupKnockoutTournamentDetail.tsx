@@ -9,7 +9,8 @@ import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
 import { useToast } from './ToastProvider';
-import { PLAYER_AVATARS } from '../core/backendClient';
+import { TournamentAvatar } from './TournamentAvatar';
+import { KnockoutBracket } from './KnockoutBracket';
 
 interface GroupKnockoutTournamentDetailProps {
   tournament: TournamentItem;
@@ -41,38 +42,6 @@ function dateTime(value?: string) {
   return value
     ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })
     : 'Chưa thiết lập';
-}
-
-function TournamentAvatar({
-  avatarId,
-  avatarUrl,
-  name,
-}: {
-  avatarId?: string;
-  avatarUrl?: string | null;
-  name: string;
-}) {
-  const avatar = PLAYER_AVATARS.find((item) => item.id === avatarId) ||
-    PLAYER_AVATARS.find((item) => item.id === 'pumpkin')!;
-  return (
-    <span
-      role="img"
-      aria-label={`${name} avatar`}
-      className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[11px] leading-none"
-    >
-      {avatar.emoji}
-      {avatarUrl && (
-        <img
-          src={avatarUrl}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(event) => {
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-      )}
-    </span>
-  );
 }
 
 export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDetailProps> = ({
@@ -129,9 +98,6 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
   const bracketRoundCount = openingMatchCount > 0
     ? Math.ceil(Math.log2(openingMatchCount)) + 1
     : 0;
-  const bracketRows = Math.max(1, openingMatchCount);
-  const bracketGridRows = Math.max(2, bracketRows * 2 - 2);
-  const finalFixture = knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0];
   const participantAvatars = useMemo(() => {
     const participants = new Map<string, { avatarId?: string; avatarUrl?: string | null }>();
     for (const group of groups) {
@@ -734,13 +700,6 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                         <span className="ml-1 inline-block whitespace-nowrap font-bold text-[var(--accent-primary)]">(Bạn)</span>
                                       )}
                                     </div>
-                                    {detail?.groupStandingsPublished && (
-                                      <div className="text-[8px] font-bold leading-3 opacity-75">
-                                        {['group_complete', 'knockout', 'completed'].includes(tournament.status)
-                                          ? (isAdvancing ? 'ĐI TIẾP' : 'BỊ LOẠI')
-                                          : (isAdvancing ? 'TOP 2' : 'NGOÀI TOP 2')}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               </th>
@@ -809,107 +768,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                   </div>)}
                   {!knockoutRounds.length && <p className="p-4 text-sm text-[var(--text-muted)]">Chưa công bố cặp đấu Knock-Out.</p>}
                 </div>
-                <div className="relative hidden overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-2 sm:p-3 lg:block">
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(249,115,22,0.07),transparent_58%)]" />
-                  <div
-                    className="relative mx-auto grid w-full max-w-[1120px] items-stretch gap-x-1.5 gap-y-1.5 sm:gap-x-2"
-                    style={{
-                      gridTemplateColumns: `repeat(${bracketRoundCount - 1}, minmax(0, 1fr)) minmax(0, 1.15fr) repeat(${bracketRoundCount - 1}, minmax(0, 1fr))`,
-                      gridTemplateRows: `repeat(${bracketGridRows}, minmax(1.1rem, auto))`,
-                    }}
-                  >
-                    {Array.from({ length: bracketRoundCount - 1 }, (_, roundIndex) => {
-                      const roundNumber = roundIndex + 1;
-                      const matchCount = Math.ceil(openingMatchCount / (2 ** roundIndex));
-                      const leftMatchCount = Math.ceil(matchCount / 2);
-                      const roundFixtures = knockoutRounds.find(([number]) => number === roundNumber)?.[1] || [];
-                      const sideIndexes = [
-                        { side: 'left', indexes: Array.from({ length: leftMatchCount }, (_, index) => index) },
-                        {
-                          side: 'right',
-                          indexes: Array.from(
-                            { length: Math.floor(matchCount / 2) },
-                            (_, index) => leftMatchCount + index
-                          ),
-                        },
-                      ] as const;
-                      return sideIndexes.flatMap(({ side, indexes }) =>
-                        indexes.map((matchIndex) => {
-                          const fixture = roundFixtures.find(
-                            (item: any) => Number(item.match_number) === matchIndex + 1
-                          );
-                          const column = side === 'left'
-                            ? roundIndex
-                            : (bracketRoundCount * 2) - 2 - roundIndex;
-                          const rowSpan = 2 ** (roundIndex + 1);
-                          const rowStep = 2 ** (roundIndex + 2);
-                          const sideMatchIndex = side === 'left'
-                            ? matchIndex
-                            : matchIndex - leftMatchCount;
-                          const rowStart = sideMatchIndex * rowStep + rowStep / 4;
-                          const connectorClass = side === 'left'
-                            ? "after:absolute after:top-1/2 after:-right-3 after:h-px after:w-3 after:bg-[var(--border-subtle)] after:content-['']"
-                            : "before:absolute before:top-1/2 before:-left-3 before:h-px before:w-3 before:bg-[var(--border-subtle)] before:content-['']";
-                          const label = knockoutRoundLabel(openingMatchCount, roundNumber);
-                          return (
-                            <article
-                              key={`${roundNumber}-${matchIndex}`}
-                              className={`relative flex min-h-0 flex-col justify-center self-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-1.5 text-[9px] shadow-md shadow-black/10 transition-colors hover:border-[var(--border-accent)] sm:px-2.5 sm:text-xs ${connectorClass}`}
-                              style={{
-                                gridColumn: column + 1,
-                                gridRow: `${rowStart} / span ${rowSpan}`,
-                              }}
-                            >
-                              <span className="mb-1 truncate text-[7px] font-bold uppercase tracking-wide text-[var(--accent-primary)] sm:text-[8px]">
-                                {label}{fixture?.series_best_of === 3 ? ' · BO3' : ''}
-                              </span>
-                              <div className={`flex items-center justify-between gap-2 ${fixture?.winner_id && fixture.winner_id === fixture.player1_id ? 'font-bold text-emerald-300' : 'text-[var(--text-secondary)]'}`}>
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  <TournamentAvatar
-                                    avatarId={participantAvatars.get(fixture?.player1_id || '')?.avatarId}
-                                    avatarUrl={participantAvatars.get(fixture?.player1_id || '')?.avatarUrl}
-                                    name={fixture?.player1 || '?'}
-                                  />
-                                  <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${fixture?.player1_id === user?.id && user ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : ''}`}>{fixture?.player1 || '?'}{fixture?.player1_id === user?.id && user ? ' (Bạn)' : ''}</span>
-                                </span>
-                                {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player1_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player1_id && <span className="shrink-0">✓</span>}
-                              </div>
-                              <div className="my-1 border-t border-[var(--border-subtle)]" />
-                              <div className={`flex items-center justify-between gap-2 ${fixture?.winner_id && fixture.winner_id === fixture.player2_id ? 'font-bold text-emerald-300' : 'text-[var(--text-secondary)]'}`}>
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  <TournamentAvatar
-                                    avatarId={participantAvatars.get(fixture?.player2_id || '')?.avatarId}
-                                    avatarUrl={participantAvatars.get(fixture?.player2_id || '')?.avatarUrl}
-                                    name={fixture?.player2 || '?'}
-                                  />
-                                  <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${fixture?.player2_id === user?.id && user ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : ''}`}>{fixture?.player2 || '?'}{fixture?.player2_id === user?.id && user ? ' (Bạn)' : ''}</span>
-                                </span>
-                                {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player2_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player2_id && <span className="shrink-0">✓</span>}
-                              </div>
-                              {fixture && (
-                                <p className="mt-1 text-[9px] text-[var(--text-muted)]">
-                                  {fixture.series_best_of === 3 && `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)} · `}
-                                  {fixture.status === 'completed'
-                                  ? fixture.winner ? <span className={fixture.winner_id === user?.id ? 'font-bold text-orange-300' : ''}>Vào vòng sau: {fixture.winner}{fixture.winner_id === user?.id ? ' (Bạn)' : ''}</span> : 'Hòa · đấu lại'
-                                    : fixture.status === 'active' ? `Đang đánh ${Number(fixture.games_played || 0) >= 3 ? 'ván phụ' : 'ván ' + (Number(fixture.games_played || 0) + 1)}` : 'Chờ thi đấu'}
-                                </p>
-                              )}
-                            </article>
-                          );
-                        })
-                      );
-                    })}
-                    <article
-                      className="flex flex-col justify-center self-center rounded-xl border border-[var(--border-accent)] bg-gradient-to-b from-orange-500/10 via-[var(--bg-elevated)] to-purple-500/10 px-1.5 py-3 text-center shadow-xl shadow-orange-950/20 sm:px-3 sm:py-4"
-                      style={{
-                        gridColumn: bracketRoundCount,
-                        gridRow: `1 / span ${bracketGridRows}`,
-                      }}
-                    >
-                      <KnockoutFinal final={finalFixture} userId={user?.id} />
-                    </article>
-                  </div>
-                </div>
+                <KnockoutBracket fixtures={knockoutFixtures} openingMatches={openingMatchCount} avatars={participantAvatars} userId={user?.id} />
                 </>
               ) : (
                 <div className="rounded-xl border border-dashed border-[var(--border-subtle)] p-8 text-center text-sm text-[var(--text-muted)]">

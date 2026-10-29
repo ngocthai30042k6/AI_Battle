@@ -229,7 +229,95 @@ input[type='range']:focus-visible {
 .ff-11 { left: 12%; top: 36%; width: 5px; height: 5px; animation: fireflyDriftB 15s ease-in-out 4.2s infinite; }
 .ff-12 { left: 82%; top: 32%; width: 5px; height: 5px; animation: fireflyDriftA 12s ease-in-out 2.2s infinite; }
 
+.knockout-stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(192, 132, 252, .13);
+  border-radius: 20px;
+  padding: 24px 18px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(251, 146, 60, .075), transparent 45%),
+    radial-gradient(ellipse at 0% 0%, rgba(139, 92, 246, .09), transparent 48%), #0e0a18;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 16px 50px rgba(0, 0, 0, .12);
+}
+
+.knockout-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: .17;
+  background-image: radial-gradient(rgba(196, 181, 253, .45) .6px, transparent .6px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at center, black, transparent 75%);
+}
+
+.knockout-stage-orbit {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 460px; height: 460px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid rgba(251, 191, 36, .035);
+  border-radius: 50%;
+  box-shadow: 0 0 0 60px rgba(192, 132, 252, .015), 0 0 0 120px rgba(192, 132, 252, .01);
+  pointer-events: none;
+}
+
+.bracket-route-pending { color: rgba(167, 139, 202, .15); }
+.bracket-route-complete { color: rgba(192, 132, 252, .32); }
+.bracket-route-own { color: rgba(251, 146, 60, .8); filter: drop-shadow(0 0 3px rgba(249, 115, 22, .3)); }
+
+.knockout-match {
+  padding: 10px;
+  border: 1px solid rgba(192, 132, 252, .16);
+  border-radius: 12px;
+  background: linear-gradient(140deg, rgba(43, 29, 62, .58), rgba(20, 14, 32, .98));
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .2), inset 0 1px rgba(255, 255, 255, .025);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.knockout-match:hover { border-color: rgba(192, 132, 252, .45); box-shadow: 0 6px 22px rgba(139, 92, 246, .12); }
+.knockout-match-mine { border-color: rgba(251, 146, 60, .52); box-shadow: 0 0 18px rgba(249, 115, 22, .06); }
+.knockout-match-live { border-color: rgba(251, 191, 36, .55); }
+.knockout-player { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 5px 4px; border-radius: 6px; color: var(--text-secondary); }
+.knockout-player + .knockout-player { margin-top: 3px; border-top: 1px solid rgba(255, 255, 255, .045); }
+.knockout-player-winner { background: linear-gradient(90deg, rgba(16, 185, 129, .09), transparent); color: #6ee7b7; font-weight: 800; }
+.knockout-player-own { background: rgba(249, 115, 22, .09); color: #fdba74; font-weight: 800; }
+.knockout-score { flex-shrink: 0; display: inline-flex; min-width: 23px; justify-content: center; padding: 3px; border-radius: 5px; background: rgba(255, 255, 255, .035); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+.knockout-player-winner .knockout-score { background: rgba(16, 185, 129, .13); }
+
+.knockout-final-card {
+  overflow: hidden;
+  padding: 25px 12px;
+  border: 1px solid rgba(251, 191, 36, .4);
+  border-radius: 20px;
+  background: radial-gradient(ellipse at 50% 15%, rgba(251, 191, 36, .11), transparent 60%), linear-gradient(160deg, #231928, #130e20 65%, #20172b);
+  box-shadow: 0 0 50px rgba(249, 115, 22, .07), inset 0 1px rgba(253, 230, 138, .15);
+}
+.knockout-podium { padding: 6px 2px 8px; }
+.knockout-podium-halo { position: absolute; z-index: -1; pointer-events: none; width: 180px; height: 180px; left: 50%; top: -25px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle, rgba(251, 191, 36, .12), transparent 68%); }
+.knockout-trophy-medallion { position: relative; display: flex; align-items: center; justify-content: center; width: 66px; height: 66px; margin: 0 auto; border: 1px solid rgba(251, 191, 36, .35); border-radius: 50%; color: #fcd34d; background: linear-gradient(135deg, rgba(251, 191, 36, .15), rgba(251, 146, 60, .035)); box-shadow: 0 0 0 6px rgba(251, 191, 36, .025), inset 0 1px rgba(255, 255, 255, .12); }
+.knockout-trophy-medallion::after { content: ''; position: absolute; inset: -12px; border: 1px dashed rgba(251, 191, 36, .12); border-radius: 50%; }
+.knockout-laurel { position: absolute; pointer-events: none; z-index: -1; top: 66px; width: 40px; height: 130px; color: rgba(251, 191, 36, .13); }
+.knockout-laurel-left { left: -5px; }
+.knockout-laurel-right { right: -5px; transform: scaleX(-1); }
+.knockout-champion-name { text-shadow: 0 2px 20px rgba(251, 191, 36, .15); }
+.knockout-final-score { display: inline-flex; align-items: center; justify-content: center; padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(251, 191, 36, .2); background: rgba(251, 191, 36, .055); letter-spacing: .04em; }
+.knockout-podium-decided .knockout-podium-halo { animation: podiumGlow 4s ease-in-out infinite; }
+@keyframes podiumGlow { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+:where(button:not(:disabled):not([aria-disabled='true']):not([data-ui-feedback='off']):not([data-ui-feedback='off'] button)) {
+  cursor: pointer;
+  transition: scale 130ms ease, filter 130ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+:where(button:not(:disabled):not([aria-disabled='true']):not([data-ui-feedback='off']):not([data-ui-feedback='off'] button)):active { scale: .97; filter: brightness(1.12); }
+.ui-click-ring { position: fixed; z-index: 130; pointer-events: none; border: 1px solid rgba(251, 146, 60, .7); box-shadow: 0 0 12px rgba(249, 115, 22, .12); animation: buttonClickRing 300ms ease-out forwards; }
+@keyframes buttonClickRing { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(1.08, 1.18); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .knockout-podium-halo, .ui-click-ring { animation: none !important; }
+  :where(button) { transition: none !important; }
+  :where(button):active { scale: 1 !important; }
   .animate-capture,
   .ff-1, .ff-2, .ff-3, .ff-4, .ff-5, .ff-6,
   .ff-7, .ff-8, .ff-9, .ff-10, .ff-11, .ff-12 {
