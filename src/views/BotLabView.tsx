@@ -80,6 +80,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
   const editorFrameRef = useRef<HTMLDivElement>(null);
   const sandboxPanelRef = useRef<HTMLDivElement>(null);
   const [docsHeight, setDocsHeight] = useState(480);
+  const [docsHeaderHeight, setDocsHeaderHeight] = useState(96);
   useLayoutEffect(() => {
     if (!showDocs) return;
     const editor = editorFrameRef.current;
@@ -90,6 +91,10 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
       const sandboxBounds = sandbox.getBoundingClientRect();
       const padding = parseFloat(getComputedStyle(sandbox).paddingTop) || 0;
       const sideBySide = sandboxBounds.left >= editorBounds.right;
+      const editorToolbar = editor.firstElementChild?.getBoundingClientRect();
+      setDocsHeaderHeight(sideBySide && editorToolbar
+        ? Math.max(72, editorToolbar.bottom - sandboxBounds.top - padding - 2)
+        : 96);
       setDocsHeight(Math.max(240, sideBySide
         ? editorBounds.bottom - sandboxBounds.top - padding - 1
         : editorBounds.height));
@@ -535,7 +540,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                 style={{ height: docsHeight }}
                 className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#150e23]"
               >
-                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
+                <div style={{ height: docsHeaderHeight }} className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
                   <h3 id="editor-python-docs-title" className="text-lg font-bold leading-snug text-[var(--text-primary)] sm:text-xl">
                     {PYTHON_BOT_DOCS_TITLE}
                   </h3>
