@@ -203,6 +203,7 @@ interface TournamentRecord {
   knockout_started_at?: string;
   knockout_rules_json?: any;
   execution_mode?: 'browser' | 'server';
+  execution_paused_at?: string | null;
   id: string;
   name: string;
   format: 'ranked_weekly' | 'group_knockout';
@@ -1044,6 +1045,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       const groupFixtures = fixtures.filter((fixture) => fixture.phase === 'group');
       if (!groupFixtures.length || groupFixtures.some((fixture) => fixture.status !== 'completed')) return;
       tournament.status = 'group_complete';
+      tournament.execution_paused_at = null;
       return;
     }
     if (tournament.status !== 'knockout') return;
@@ -1056,6 +1058,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       .map((fixture) => fixture.winner_id as string);
     if (winners.length === 1) {
       tournament.status = 'completed';
+      tournament.execution_paused_at = null;
       return;
     }
     const nextRound = createNextKnockoutRound(winners, roundNumber + 1);
@@ -2127,6 +2130,27 @@ export async function startServer(options: ServerStartOptions = {}) {
     } catch (err: any) {
       res.status(err.status || 500).json({ error: err.message });
     }
+  });
+
+  app.post(['/api/tournaments/:id/pause', '/api/tournaments/:id/resume'], (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req);
+      if (!user.is_admin) { res.status(403).json({ error: 'Cần quyền Ban Tổ Chức.' }); return; }
+      const t = db.tournaments.find(item => item.id === req.params.id);
+      if (!t) { res.status(404).json({ error: 'Không tìm thấy giải đấu.' }); return; }
+      if (t.format !== 'group_knockout' || t.execution_mode !== 'server' ||
+          !['group_running', 'knockout'].includes(t.status) || (t.status === 'knockout' && !t.knockout_started_at)) {
+        res.status(409).json({ error: 'Chỉ có thể tạm dừng hoặc tiếp tục vòng đấu đã khởi chạy.' }); return;
+      }
+      const paused = req.path.endsWith('/pause');
+      if (paused && !t.execution_paused_at) t.execution_paused_at = new Date().toISOString();
+      if (!paused && t.execution_paused_at) {
+        t.ends_at = new Date(new Date(t.ends_at).getTime() + Date.now() - new Date(t.execution_paused_at).getTime()).toISOString();
+        t.execution_paused_at = null;
+      }
+      saveDb(); res.json({ tournament: t });
+      if (!paused) void runLocalGroupFixture();
+    } catch (err: any) { res.status(err.status || 500).json({ error: err.message }); }
   });
 
   app.post('/api/tournaments/:id/start-groups', (req: Request, res: Response) => {
@@ -3846,7 +3870,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       }
       const fixture = db.tournamentFixtures.filter(f => f.status === 'pending')
         .sort((a, b) => a.round_number - b.round_number || a.match_number - b.match_number)
-        .find(f => db.tournaments.some(t => t.id === f.tournament_id && t.execution_mode === 'server' &&
+        .find(f => db.tournaments.some(t => t.id === f.tournament_id && t.execution_mode === 'server' && !t.execution_paused_at &&
           t.status === (f.phase === 'group' ? 'group_running' : 'knockout') && (f.phase === 'group' || Boolean(t.knockout_started_at))));
       if (!fixture) return;
       const tournament = db.tournaments.find(t => t.id === fixture.tournament_id)!;

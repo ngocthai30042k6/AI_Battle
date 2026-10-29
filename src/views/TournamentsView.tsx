@@ -272,7 +272,7 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
             const eventDate = new Date(
               t.tournament_starts_at || t.registration_closes_at
             ).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
-            const statusLabel = t.status === 'group_stage'
+            const statusLabel = t.execution_paused_at ? `${t.status === 'knockout' ? 'Knock-Out' : 'Vòng bảng'} · Tạm dừng` : t.status === 'group_stage'
               ? `${t.group_count || 0} bảng · Chờ khởi chạy`
               : GROUP_TOURNAMENT_STATUS_LABELS[t.status] || t.status;
             return (

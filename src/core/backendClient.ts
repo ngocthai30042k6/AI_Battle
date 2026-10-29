@@ -128,6 +128,7 @@ export interface TournamentItem {
   knockout_starts_at?: string;
   knockout_started_at?: string;
   execution_mode?: 'browser' | 'server';
+  execution_paused_at?: string | null;
   id: string;
   name: string;
   format: string;
@@ -412,6 +413,10 @@ export class BackendClient {
 
   async startTournamentGroups(id: string) {
     return this.request(`/api/tournaments/${encodeURIComponent(id)}/start-groups`, 'POST', {}, true);
+  }
+
+  async setTournamentPaused(id: string, paused: boolean) {
+    return this.request(`/api/tournaments/${encodeURIComponent(id)}/${paused ? 'pause' : 'resume'}`, 'POST', {}, true);
   }
 
   async prepareTournamentKnockout(id: string, settings: any) {

@@ -7,6 +7,7 @@ import { startServerGroupStage, createTournamentRunner } from '../src/tournament
 import { playServerBotMatch } from '../src/server-bot-match.js';
 import { ELO_RATED_MATCH_SQL } from '../../shared/matchRating.mjs';
 import { completeServerGroupMatch } from '../src/group-match-completion.js';
+import { setTournamentPaused } from '../src/tournament-pause.js';
 
 test('Postgres: snapshot bots, run both seats offline, recover restart and commit results once', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout: 90000,
@@ -49,10 +50,24 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     await pool.query("UPDATE tournament_fixtures SET status='active',match_id=$2 WHERE id=$1", [fixture1, oldMatch]);
     const played = [];
     const errors = [];
+    const pause = async paused => {
+      const db = await pool.connect();
+      try {
+        await db.query('BEGIN');
+        const result = await setTournamentPaused(db,tournamentId,paused);
+        await db.query('COMMIT'); return result;
+      } catch (error) { await db.query('ROLLBACK'); throw error; }
+      finally { db.release(); }
+    };
     runner = createTournamentRunner({ pool, lockKey:randomInt(2,2147483647), onError: (...args) => errors.push(args),
       play: async game => {
         assert.deepEqual(game.codes, [code, code]);
         played.push(game);
+        if (played.length === 1) {
+          const firstPause = await pause(true);
+          const repeatPause = await pause(true);
+          assert.equal(firstPause.execution_paused_at.getTime(),repeatPause.execution_paused_at.getTime());
+        }
         return playServerBotMatch({ ...game, maxPlies: 4 });
       },
       updateEntries: async (db, match, score) => {
@@ -69,6 +84,13 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     });
     // Concurrent calls within one server must not claim the same fixture twice.
     await Promise.all([runner.tick(), runner.tick()]);
+    // Pausing during a game keeps its result, but neither a fresh tick nor
+    // recovering queue ownership can claim the next pending fixture.
+    await runner.tick();
+    assert.equal(played.length,1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM match_results')).rows[0].n,1);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM tournament_fixtures WHERE status='pending'")).rows[0].n,1);
+    await pause(false);
     // A started runner drains its queue without waiting for another manual tick.
     runner.start();
     const deadline=Date.now()+30000;
@@ -89,6 +111,7 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     assert.ok((await pool.query(`SELECT ${ELO_RATED_MATCH_SQL} AS rated FROM matches m`)).rows.every(r=>r.rated===false));
     assert.equal((await pool.query('SELECT status FROM matches WHERE id=$1', [oldMatch])).rows[0].status, 'abandoned');
     assert.equal((await pool.query('SELECT status FROM tournaments WHERE id=$1', [tournamentId])).rows[0].status, 'group_complete');
+    await assert.rejects(pause(true), /đã khởi chạy/);
     assert.ok(results.every(m => m.replay_json.moves.length > 0));
     assert.deepEqual((await pool.query('SELECT matches_played,points FROM tournament_entries')).rows,
       [{ matches_played: 2, points: 2 }, { matches_played: 2, points: 2 }]);

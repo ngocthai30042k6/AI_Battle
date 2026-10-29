@@ -29,6 +29,7 @@ import { registerMatchSessionKey } from './session-key.js';
 import { updateGroupEntryScore } from './group-entry-score.js';
 import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
 import { createTournamentRunner, startServerGroupStage } from './tournament-runner.js';
+import { setTournamentPaused } from './tournament-pause.js';
 import { organizeTournamentGroups, getTournamentGroupEntries, getTournamentFixturePreview } from './tournament-groups.js';
 import {
   buildTournamentRules,
@@ -1914,7 +1915,7 @@ const httpServer = createServer(async (req, res) => {
       `SELECT t.id,t.name,t.format,t.description,t.status,t.registration_opens_at,
                 t.registration_closes_at,t.tournament_starts_at,t.ends_at,t.max_teams,
                  t.group_count,t.current_week,t.total_sprints,t.rules_json,t.created_at,t.min_elo,
-                 t.knockout_rules_json,t.knockout_starts_at,t.knockout_started_at,
+                 t.knockout_rules_json,t.knockout_starts_at,t.knockout_started_at,t.execution_paused_at,
                 count(e.tournament_id)::int AS participant_count,
                 count(e.tournament_id)::int AS team_count
          FROM tournaments t LEFT JOIN tournament_entries e ON e.tournament_id=t.id
@@ -2099,6 +2100,21 @@ const httpServer = createServer(async (req, res) => {
         ]
       );
       return json(res, 201, { tournament: created.rows[0] });
+    }
+    if (req.method === 'POST' && /^\/api\/tournaments\/[0-9a-f-]+\/(pause|resume)$/i.test(url.pathname)) {
+      const auth = authFromHeader(req);
+      const admin = await pool.query('SELECT is_admin FROM users WHERE id=$1', [auth.sub]);
+      if (!admin.rows[0]?.is_admin) throw Object.assign(new Error('Tournament organizer permission required'), { status: 403 });
+      const paused = url.pathname.endsWith('/pause');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const tournament = await setTournamentPaused(client, url.pathname.split('/')[3], paused);
+        await client.query('COMMIT');
+        if (!paused) void tournamentRunner.tick();
+        return json(res, 200, { tournament });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
     }
     if (req.method === 'POST' && /^\/api\/tournaments\/[0-9a-f-]+\/start-groups$/i.test(url.pathname)) {
       const auth = authFromHeader(req);
@@ -3011,6 +3027,7 @@ async function main() {
   await pool.query(await readFile(new URL('../migrations/017_server_tournament_runner.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/018_knockout_bo3.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/019_tournament_runner_queue.sql', import.meta.url), 'utf8'));
+  await pool.query(await readFile(new URL('../migrations/020_tournament_pause.sql', import.meta.url), 'utf8'));
   await updateTournamentLifecycle();
   tournamentLifecycleTimer = setInterval(() => updateTournamentLifecycle().catch(error => {
     console.error('Tournament lifecycle update failed:', error.message);

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, RefreshCw, Search, Settings2, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Pause, Play, RefreshCw, Search, Settings2, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
 import { backendClient, type BackendUser, type TournamentItem } from '../core/backendClient';
 import { KnockoutSetup } from './KnockoutSetup';
 import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
@@ -301,7 +301,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         <div className="relative mx-auto flex max-w-3xl flex-col items-center text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/[0.08] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent-primary)]">
             <Sparkles className="h-3.5 w-3.5" />
-            {STATUS_LABELS[tournament.status] || tournament.status}
+            {tournament.execution_paused_at ? `${tournament.status === 'knockout' ? 'Knock-Out' : 'Vòng bảng'} · Tạm dừng` : STATUS_LABELS[tournament.status] || tournament.status}
             <Sparkles className="h-3.5 w-3.5" />
           </span>
           <h2 className="mt-3 text-3xl font-black tracking-tight text-[var(--text-primary)] sm:text-4xl">
@@ -568,7 +568,31 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         </section>
       )}
 
-      {activeTournamentTab === 'groups' && !user?.isAdmin && ownEntry && savedBotVersion > 0 &&
+      {tournament.execution_mode === 'server' && (tournament.status === 'group_running' ||
+        (tournament.status === 'knockout' && tournament.knockout_started_at)) && (
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5" aria-live="polite">
+          <div className="flex items-start gap-3">
+            {tournament.execution_paused_at ? <Pause className="mt-0.5 h-5 w-5 text-amber-400" /> : <Loader2 className="mt-0.5 h-5 w-5 animate-spin text-[var(--accent-primary)]" />}
+            <div>
+              <h3 className="font-bold">{tournament.status === 'knockout' ? 'Vòng Knock-Out' : 'Vòng bảng'} · {tournament.execution_paused_at ? 'Tạm dừng' : 'Đang thi đấu'}</h3>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                {tournament.execution_paused_at
+                  ? 'Ván đang chạy sẽ hoàn tất. Các ván tiếp theo chờ BTC bấm Tiếp tục; kết quả và Bot đã chốt được giữ nguyên.'
+                  : 'Server tự chạy các ván đấu. Tạm dừng sẽ có hiệu lực sau khi ván hiện tại hoàn tất.'}
+              </p>
+            </div>
+          </div>
+          {user?.isAdmin && <button type="button" disabled={submitting} aria-busy={submitting}
+            onClick={() => perform(() => backendClient.setTournamentPaused(tournament.id, !tournament.execution_paused_at),
+              tournament.execution_paused_at ? 'Đã tiếp tục vòng đấu từ lịch còn lại.' : 'Đã yêu cầu tạm dừng. Ván đang chạy sẽ được hoàn tất và lưu kết quả.')}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-[var(--border-accent)] bg-[var(--bg-panel)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-primary)] disabled:opacity-50">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : tournament.execution_paused_at ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+            {tournament.execution_paused_at ? 'Tiếp tục' : 'Tạm dừng'} {tournament.status === 'knockout' ? 'Knock-Out' : 'vòng bảng'}
+          </button>}
+        </section>
+      )}
+
+      {activeTournamentTab === 'groups' && !tournament.execution_paused_at && !user?.isAdmin && ownEntry && savedBotVersion > 0 &&
         ['group_running', 'knockout'].includes(tournament.status) && (
           <div className="rounded-xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">
             {tournament.execution_mode === 'server'

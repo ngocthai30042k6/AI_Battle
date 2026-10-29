@@ -7,6 +7,7 @@ import { createTournamentRunner } from '../src/tournament-runner.js';
 import { prepareServerKnockout, startServerKnockout, completeServerKnockoutGame } from '../src/knockout-series.js';
 import { updateGroupEntryScore } from '../src/group-entry-score.js';
 import { registerMatchSessionKey } from '../src/session-key.js';
+import { setTournamentPaused } from '../src/tournament-pause.js';
 
 test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advancement and champion', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout: 300000,
@@ -74,6 +75,15 @@ test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advan
     assert.deepEqual(sent.find(e=>e.id===ids[15] && e.data.playerId===ids[0]).data.publicKey,key1);
     await pool.query("UPDATE user_bot_versions SET code='raise RuntimeError()'");
     const played = [],errors = [];
+    const pause = async paused => {
+      const db = await pool.connect();
+      try {
+        await db.query('BEGIN');
+        await setTournamentPaused(db,tid,paused);
+        await db.query('COMMIT');
+      } catch(error) {await db.query('ROLLBACK'); throw error;}
+      finally {db.release();}
+    };
     const options = { pool, lockKey:randomInt(2,2147483647), onError:(...args)=>errors.push(args), updateEntries:updateGroupEntryScore,
       play:async game => {
         const match = (await pool.query('SELECT * FROM matches WHERE id=$1',[game.matchId])).rows[0];
@@ -85,6 +95,7 @@ test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advan
         if (fixture.id===opening[0].id && fixture.games_played===1) winner=fixture.player2_id;
         if (fixture.id===opening[1].id) winner=fixture.games_played<4?null:fixture.player2_id;
         played.push({ fixture:fixture.id,first:match.player1_id,winner });
+        if (played.length === 1) await pause(true);
         return { winner:winner===null?0:winner===match.player1_id?1:2,moveCount:25,finalHash:'test',
           replay:{ format:'test',result:{winner} } };
       },
@@ -96,6 +107,10 @@ test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advan
     runner=createTournamentRunner(options);
     await runner.tick(); await runner.stop(); // Restart after a committed score.
     runner=createTournamentRunner(options);
+    await runner.tick();
+    assert.equal(played.length,1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM match_results')).rows[0].n,1);
+    await pause(false);
     for(let i=0;i<45;i++) {
       await Promise.all([runner.tick(),runner.tick()]);
       if((await pool.query('SELECT status FROM tournaments WHERE id=$1',[tid])).rows[0].status==='completed') break;

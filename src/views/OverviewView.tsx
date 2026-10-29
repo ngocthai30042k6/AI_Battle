@@ -389,7 +389,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       </h4>
                       <div className="text-xs text-[var(--text-secondary)] tabular-nums">
                         <span>
-                          {{ scheduled: 'Sắp mở đăng ký', registration: 'Đang mở đăng ký',
+                          {t.execution_paused_at ? `${t.status === 'knockout' ? 'Knock-Out' : 'Vòng bảng'} · Tạm dừng` : { scheduled: 'Sắp mở đăng ký', registration: 'Đang mở đăng ký',
                             grouping: 'Chờ chia bảng', group_stage: 'Đã chia bảng',
                             group_running: 'Vòng bảng đang diễn ra', group_complete: 'Vòng bảng đã kết thúc',
                             knockout: 'Vòng knock-out', completed: 'Đã kết thúc', cancelled: 'Đã hủy',

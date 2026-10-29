@@ -35,7 +35,7 @@ export async function completeServerGroupMatch(client, match, result) {
         replay_json=$9::jsonb,replay_sha256=$10,completed_at=clock_timestamp()
       WHERE id=$3 AND EXISTS(SELECT 1 FROM finished_fixture) RETURNING id
     ), finished_stage AS (
-      UPDATE tournaments SET status='group_complete' WHERE id=$2 AND status='group_running'
+      UPDATE tournaments SET status='group_complete',execution_paused_at=NULL WHERE id=$2 AND status='group_running'
         AND EXISTS(SELECT 1 FROM finished_fixture)
         AND NOT EXISTS(SELECT 1 FROM tournament_fixtures WHERE tournament_id=$2 AND phase='group'
           AND status<>'completed' AND id<>$1) RETURNING id

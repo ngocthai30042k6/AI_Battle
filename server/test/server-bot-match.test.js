@@ -79,6 +79,17 @@ test('infinite Python loops time out without blocking the server', async () => {
   try { await assert.rejects(bot.move(1, {}), /time limit/); } finally { await bot.close(); }
 });
 
+test('lean interpreter startup preserves stdlib imports and suppresses bot prints', async () => {
+  const bot=await createPythonBot(`import math,random,collections,statistics,heapq,json,itertools
+print('startup output')
+def get_next_move(p,s):
+ print('move output')
+ return {'from':math.floor(statistics.mean([1,1])),'to':heapq.nsmallest(1,[3,2])[0]}
+`);
+  try {assert.deepEqual(await bot.move(1,{}),{from:1,to:2});}
+  finally {await bot.close();}
+});
+
 test('illegal bot moves forfeit; player seats are not reordered', async () => {
   const seats = [];
   const result = await playServerBotMatch({ matchId: 'test', seed: 123, codes: ['first', 'second'] },

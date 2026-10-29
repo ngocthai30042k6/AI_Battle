@@ -76,7 +76,8 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, p
         JOIN tournament_fixtures f ON f.id=queue.id
         JOIN tournament_entries e1 ON e1.tournament_id=t.id AND e1.player_id=f.player1_id
         JOIN tournament_entries e2 ON e2.tournament_id=t.id AND e2.player_id=f.player2_id
-        WHERE t.execution_mode='server' AND ((t.status='group_running' AND f.phase='group' AND t.ends_at>now())
+        WHERE t.execution_mode='server' AND t.execution_paused_at IS NULL
+          AND ((t.status='group_running' AND f.phase='group' AND t.ends_at>now())
           OR (t.status='knockout' AND f.phase='knockout' AND t.knockout_started_at IS NOT NULL)) AND f.status='pending'
         ORDER BY f.round_number,f.match_number,f.leg LIMIT 1 FOR UPDATE OF f,t
       ), seats AS (

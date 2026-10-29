@@ -5,28 +5,33 @@ import { fetchWASIFS } from '@runno/sandbox';
 const runtime = new URL('./langs/', import.meta.resolve('@runno/sandbox'));
 let baseFiles;
 let compiledPython;
-const wrapper = `import json, sys, io, contextlib
+const wrapper = `import json, sys
 class Quiet:
     def write(self, text): return len(text)
     def flush(self): pass
 namespace = {}
+protocol_out = sys.stdout
+quiet = Quiet()
+def send(packet):
+    protocol_out.write(json.dumps(packet) + '\\n')
+    protocol_out.flush()
 try:
-    with contextlib.redirect_stdout(Quiet()), contextlib.redirect_stderr(Quiet()):
-        exec(open('/submission.py').read(), namespace)
+    sys.stdout = sys.stderr = quiet
+    exec(open('/submission.py').read(), namespace)
     move_fn = namespace.get('get_next_move', namespace.get('getNextMove'))
     if not callable(move_fn): raise ValueError('Bot must define get_next_move')
-    print(json.dumps({'ready': True}), flush=True)
+    send({'ready': True})
 except BaseException:
-    print(json.dumps({'error': 'Cannot load Python bot'}), flush=True)
+    send({'error': 'Cannot load Python bot'})
     sys.exit(1)
 for line in sys.stdin:
     try:
         request = json.loads(line)
-        with contextlib.redirect_stdout(Quiet()), contextlib.redirect_stderr(Quiet()):
-            move = move_fn(request['player'], request['state'])
-        print(json.dumps({'move': move}), flush=True)
+        sys.stdout = sys.stderr = quiet
+        move = move_fn(request['player'], request['state'])
+        send({'move': move})
     except BaseException:
-        print(json.dumps({'error': 'Python bot execution failed'}), flush=True)
+        send({'error': 'Python bot execution failed'})
 `;
 
 // Only a WASI virtual filesystem is exposed: no host files, credentials or network.
@@ -83,7 +88,9 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
   } });
   const ready = wait(bootTimeoutMs);
   worker.postMessage({ type: 'start', module,
-    stdinBuffer: stdin, args: ['python', '-u', '/runner.py'], env: {},
+    // The bundled runtime contains only the standard library. Skip automatic
+    // site initialization; bots can still import all bundled stdlib modules.
+    stdinBuffer: stdin, args: ['python', '-S', '-u', '/runner.py'], env: {},
     fs: { ...files, '/runner.py': file(wrapper), '/submission.py': file(code) },
   });
   try { await ready; } catch (error) { closed = true; detach(); await discardPythonWorker(worker); throw error; }

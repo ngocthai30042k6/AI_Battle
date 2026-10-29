@@ -76,7 +76,7 @@ export async function prepareServerKnockout(client, tournamentId, body) {
     [existing[i].id,f.player1Id,f.player2Id,newKnockoutSeries(f.player1Id,f.player2Id).next_first_player_id]);
   }
   await client.query(`UPDATE tournaments SET status='knockout',execution_mode='server',knockout_rules_json=$2::jsonb,
-    knockout_starts_at=$3,knockout_started_at=NULL WHERE id=$1`, [tournamentId, JSON.stringify(rules), startsAt]);
+    knockout_starts_at=$3,knockout_started_at=NULL,execution_paused_at=NULL WHERE id=$1`, [tournamentId, JSON.stringify(rules), startsAt]);
   return { fixtureCount: fixtures.length };
 }
 
@@ -124,7 +124,7 @@ export async function completeServerKnockoutGame(client, fixture, match, winnerI
     AND round_number=$2 ORDER BY match_number FOR UPDATE`, [match.tournament_id,fixture.round_number])).rows;
   if (round.some(f => f.status !== 'completed')) return;
   if (round.length === 1) {
-    await client.query("UPDATE tournaments SET status='completed',ends_at=now() WHERE id=$1", [match.tournament_id]);
+    await client.query("UPDATE tournaments SET status='completed',ends_at=now(),execution_paused_at=NULL WHERE id=$1", [match.tournament_id]);
   } else {
     for (const f of createNextKnockoutRound(round.map(f => f.winner_id), Number(fixture.round_number)+1)) {
       await insertKnockoutSeries(client,match.tournament_id,f);
