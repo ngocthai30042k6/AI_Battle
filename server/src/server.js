@@ -1979,8 +1979,8 @@ const httpServer = createServer(async (req, res) => {
         ? (await pool.query(
           `SELECT entry.player_id,entry.group_number,entry.registered_at,
                   entry.matches_played,entry.wins,entry.draws,entry.losses,entry.points,
-                  user.display_name,user.elo,user.avatar_id,user.avatar_url
-           FROM tournament_entries entry JOIN users user ON user.id=entry.player_id
+                  participant.display_name,participant.elo,participant.avatar_id,participant.avatar_url
+           FROM tournament_entries entry JOIN users participant ON participant.id=entry.player_id
            WHERE entry.tournament_id=$1 AND entry.group_number IS NOT NULL
            ORDER BY entry.group_number,entry.registered_at,entry.player_id`,
           [tournamentId]
@@ -2183,8 +2183,8 @@ const httpServer = createServer(async (req, res) => {
             if (remaining.rowCount) throw Object.assign(new Error('Vòng bảng chưa hoàn tất.'), { status: 409 });
             const [entrants, fixtures] = await Promise.all([
               client.query(
-                `SELECT entry.player_id,entry.group_number,entry.registered_at,user.display_name
-                 FROM tournament_entries entry JOIN users user ON user.id=entry.player_id
+                `SELECT entry.player_id,entry.group_number,entry.registered_at,participant.display_name
+                 FROM tournament_entries entry JOIN users participant ON participant.id=entry.player_id
                  WHERE entry.tournament_id=$1 AND entry.group_number IS NOT NULL
                  ORDER BY entry.group_number,entry.registered_at,entry.player_id`,
                 [tournamentId]
