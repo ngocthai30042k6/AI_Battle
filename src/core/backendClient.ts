@@ -117,6 +117,9 @@ export function getMatchEloLabel(match: MatchSummary, userId: string): string | 
 }
 
 export interface TournamentItem {
+  min_elo?: number;
+  knockout_starts_at?: string;
+  knockout_started_at?: string;
   execution_mode?: 'browser' | 'server';
   id: string;
   name: string;
@@ -133,6 +136,7 @@ export interface TournamentItem {
   total_sprints: number;
   week_started_at: string | null;
   rules_json: any;
+  knockout_rules_json?: any;
   rules_schedule?: string[];
   participant_count?: number;
   created_at: string;
@@ -157,6 +161,7 @@ export class BackendClient {
   private handlers = new Map<string, Set<EventHandler>>();
   private activeMatchId: string | null = null;
   private pendingIceCandidates: any[] = [];
+  private pendingMatchEvents = new Map<string, any[]>();
 
   constructor() {
     try {
@@ -171,6 +176,13 @@ export class BackendClient {
   on(event: string, fn: EventHandler): () => void {
     if (!this.handlers.has(event)) this.handlers.set(event, new Set());
     this.handlers.get(event)!.add(fn);
+    const pending = this.pendingMatchEvents.get(event);
+    if (pending?.length) {
+      this.pendingMatchEvents.delete(event);
+      queueMicrotask(() => {
+        if (this.handlers.get(event)?.has(fn)) pending.forEach(packet => this.emit(event, packet));
+      });
+    }
     return () => {
       this.handlers.get(event)?.delete(fn);
     };
@@ -178,7 +190,13 @@ export class BackendClient {
 
   private emit(event: string, payload?: any) {
     const set = this.handlers.get(event);
-    if (!set) return;
+    if (!set?.size) {
+      if (event === 'peer-data' || event === 'peer-session-key') {
+        const pending = this.pendingMatchEvents.get(event) || [];
+        this.pendingMatchEvents.set(event, [...pending.slice(-63), payload]);
+      }
+      return;
+    }
     for (const fn of set) {
       try {
         fn(payload);
@@ -352,6 +370,7 @@ export class BackendClient {
   }
 
   async createTournament(payload: {
+    minElo?: number;
     name: string;
     description: string;
     registrationOpensAt: string;
@@ -370,6 +389,10 @@ export class BackendClient {
 
   async startTournamentGroups(id: string) {
     return this.request(`/api/tournaments/${encodeURIComponent(id)}/start-groups`, 'POST', {}, true);
+  }
+
+  async prepareTournamentKnockout(id: string, settings: any) {
+    return this.request(`/api/tournaments/${encodeURIComponent(id)}/prepare-knockout`, 'POST', settings, true);
   }
 
   async startTournamentKnockout(id: string) {
@@ -475,6 +498,7 @@ export class BackendClient {
 
   private handleWsPacket(packet: any) {
     if (packet.type === 'match-found') {
+      this.pendingMatchEvents.clear();
       this.activeMatchId = packet.match?.id || null;
       this.closePeerChannel();
       this.emit('match-found', packet);
@@ -485,9 +509,11 @@ export class BackendClient {
       return;
     }
     if (packet.type === 'match-relay') {
+      if (packet.matchId !== this.activeMatchId) return;
       this.emit('peer-data', packet.payload);
       return;
     }
+    if (packet.type === 'peer-session-key' && packet.matchId !== this.activeMatchId) return;
     this.emit(packet.type, packet);
   }
 

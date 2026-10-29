@@ -16,6 +16,8 @@ import { promisify } from 'node:util';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
+import { knockoutConfiguration, knockoutStartTime, newKnockoutSeries, recordKnockoutGame } from './server/src/knockout-series.js';
+import { minimumTournamentElo, requireTournamentElo } from './server/src/tournament-eligibility.js';
 import { playServerBotMatch } from './server/src/server-bot-match.js';
 import {
   TOURNAMENT_RANKS,
@@ -192,6 +194,10 @@ interface BotVersionRecord {
 }
 
 interface TournamentRecord {
+  min_elo?: number;
+  knockout_starts_at?: string;
+  knockout_started_at?: string;
+  knockout_rules_json?: any;
   execution_mode?: 'browser' | 'server';
   id: string;
   name: string;
@@ -232,6 +238,13 @@ interface TournamentEntryRecord {
 }
 
 interface TournamentFixtureRecord {
+  series_best_of?: number;
+  player1_score?: number;
+  player2_score?: number;
+  games_played?: number;
+  next_first_player_id?: string;
+  series_games?: any[];
+
   id: string;
   tournament_id: string;
   phase: 'group' | 'knockout';
@@ -1049,6 +1062,7 @@ export async function startServer(options: ServerStartOptions = {}) {
     const nextRound = createNextKnockoutRound(winners, roundNumber + 1);
     db.tournamentFixtures.push(
       ...nextRound.map((fixture) => createTournamentFixture(tournament.id, {
+        ...newKnockoutSeries(fixture.player1Id, fixture.player2Id),
         phase: 'knockout',
         group_number: null,
         round_number: fixture.roundNumber,
@@ -1068,7 +1082,16 @@ export async function startServer(options: ServerStartOptions = {}) {
     );
     const tournament = db.tournaments.find((item) => item.id === match.tournament_id);
     if (!fixture || !tournament) return;
+    if (fixture.status !== 'active' || fixture.match_id !== match.id) return;
     fixture.move_count = moveCount;
+    if (fixture.phase === 'knockout' && fixture.series_best_of === 3) {
+      const seriesResult = recordKnockoutGame(fixture, match, winnerId, moveCount);
+      Object.assign(fixture, seriesResult);
+      fixture.leg = (fixture.games_played || 0) + 1;
+      if (seriesResult.status !== 'completed') fixture.match_id = null;
+      advanceGroupKnockoutTournament(tournament);
+      return;
+    }
     if (fixture.phase === 'knockout' && !winnerId) {
       fixture.leg += 1;
       fixture.status = 'pending';
@@ -1108,7 +1131,7 @@ export async function startServer(options: ServerStartOptions = {}) {
   }
 
   function getPendingTournamentFixture(tournament: TournamentRecord, playerId: string) {
-    if (tournament.execution_mode === 'server' && tournament.status === 'group_running') return null;
+    if (tournament.execution_mode === 'server' && ['group_running', 'knockout'].includes(tournament.status)) return null;
     if (
       tournament.format !== 'group_knockout' ||
       !['group_running', 'knockout'].includes(tournament.status) ||
@@ -1947,6 +1970,7 @@ export async function startServer(options: ServerStartOptions = {}) {
         return;
       }
       const registrationOpensAt = new Date(req.body?.registrationOpensAt);
+      const minElo = minimumTournamentElo(req.body?.minElo);
       const registrationClosesAt = new Date(req.body?.registrationClosesAt);
       const tournamentStartsAt = new Date(req.body?.tournamentStartsAt);
 
@@ -1990,6 +2014,7 @@ export async function startServer(options: ServerStartOptions = {}) {
         tournament_starts_at: tournamentStartsAt.toISOString(),
         ends_at: new Date(tournamentStartsAt.getTime() + 90 * 86400000).toISOString(),
         max_teams: 2147483647,
+        min_elo: minElo,
         group_count: null,
         current_week: 0,
         last_reset_week: 0,
@@ -2106,7 +2131,7 @@ export async function startServer(options: ServerStartOptions = {}) {
     }
   });
 
-  app.post('/api/tournaments/:id/start-knockout', (req: Request, res: Response) => {
+  app.post('/api/tournaments/:id/prepare-knockout', (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req);
       if (!user.is_admin) {
@@ -2128,9 +2153,15 @@ export async function startServer(options: ServerStartOptions = {}) {
         standings.slice(0, index)
           .filter((row) => row.group_number === standings[index].group_number).length < 2
       );
-      const openingRound = createKnockoutOpeningRound(qualifiers);
+      const config = knockoutConfiguration(qualifiers, tournament.rules_json, req.body);
+      const openingRound = config.fixtures;
+      tournament.knockout_starts_at = knockoutStartTime(req.body?.knockoutStartsAt).toISOString();
+      tournament.knockout_started_at = undefined;
+      tournament.knockout_rules_json = config.rules;
+      tournament.execution_mode = 'server';
       db.tournamentFixtures.push(
         ...openingRound.map((fixture) => createTournamentFixture(tournament.id, {
+          ...newKnockoutSeries(fixture.player1Id, fixture.player2Id),
           phase: 'knockout',
           group_number: null,
           round_number: fixture.roundNumber,
@@ -2147,6 +2178,36 @@ export async function startServer(options: ServerStartOptions = {}) {
     } catch (err: any) {
       res.status(err.status || 500).json({ error: err.message });
     }
+  });
+
+  app.post('/api/tournaments/:id/start-knockout', (req: Request, res: Response) => {
+    try {
+      const actor = getAuthUser(req);
+      if (!actor.is_admin) { res.status(403).json({ error: 'Cần quyền Ban Tổ Chức.' }); return; }
+      const t = db.tournaments.find(item => item.id === req.params.id);
+      if (t?.status !== 'knockout' || t.knockout_started_at) {
+        res.status(409).json({ error: 'Cần phân nhánh knock-out trước; vòng đã chạy không thể khởi chạy lại.' }); return;
+      }
+      if (!t.knockout_starts_at || new Date(t.knockout_starts_at).getTime() > Date.now()) {
+        res.status(409).json({ error: 'Chưa đến giờ bắt đầu vòng knock-out; người chơi vẫn có thể cập nhật Bot.' }); return;
+      }
+      const fixtures = db.tournamentFixtures.filter(f => f.tournament_id === t.id && f.phase === 'knockout');
+      if (!fixtures.length || fixtures.some(f => f.status !== 'pending' || f.games_played)) {
+        res.status(409).json({ error: 'Nhánh knock-out không sẵn sàng.' }); return;
+      }
+      const ids = [...new Set(fixtures.flatMap(f => [f.player1_id, f.player2_id]))];
+      const bots = ids.map(id => getActiveUserBot(id));
+      if (bots.some(b => !b?.code?.trim())) {
+        res.status(409).json({ error: 'Mỗi đấu thủ knock-out phải có code Bot đã lưu.' }); return;
+      }
+      ids.forEach((id, i) => {
+        const entry = db.tournamentEntries.find(e => e.tournament_id === t.id && e.player_id === id)!;
+        entry.bot_code_snapshot = bots[i]!.code; entry.bot_version = bots[i]!.version;
+        entry.bot_sha256_snapshot = createHash('sha256').update(bots[i]!.code).digest('hex');
+      });
+      t.knockout_started_at = new Date().toISOString(); t.execution_mode = 'server';
+      saveDb(); res.json({ started: true }); void runLocalGroupFixture();
+    } catch (err: any) { res.status(err.status || 500).json({ error: err.message }); }
   });
 
   app.post('/api/tournaments/cancel-all', (req: Request, res: Response) => {
@@ -2312,6 +2373,7 @@ export async function startServer(options: ServerStartOptions = {}) {
             status: 409,
           });
         }
+        requireTournamentElo(target, player);
         return { entry, player };
       });
       const registeredAt = new Date().toISOString();
@@ -2361,6 +2423,7 @@ export async function startServer(options: ServerStartOptions = {}) {
         });
         return;
       }
+      requireTournamentElo(t, user);
       if (!getActiveUserBot(user.id)) {
         res.status(400).json({ error: 'Cần lưu một Bot hợp lệ trước khi đăng ký giải đấu.' });
         return;
@@ -3747,26 +3810,29 @@ export async function startServer(options: ServerStartOptions = {}) {
         const fixture = db.tournamentFixtures.find(f => f.match_id === match.id);
         if (fixture?.status === 'active') { fixture.status = 'pending'; fixture.match_id = null; }
       }
-      const fixture = db.tournamentFixtures.filter(f => f.phase === 'group' && f.status === 'pending')
+      const fixture = db.tournamentFixtures.filter(f => f.status === 'pending')
         .sort((a, b) => a.round_number - b.round_number || a.match_number - b.match_number)
-        .find(f => db.tournaments.some(t => t.id === f.tournament_id && t.execution_mode === 'server' && t.status === 'group_running'));
+        .find(f => db.tournaments.some(t => t.id === f.tournament_id && t.execution_mode === 'server' &&
+          t.status === (f.phase === 'group' ? 'group_running' : 'knockout') && (f.phase === 'group' || Boolean(t.knockout_started_at))));
       if (!fixture) return;
       const tournament = db.tournaments.find(t => t.id === fixture.tournament_id)!;
-      const first = db.users.find(u => u.id === fixture.player1_id)!;
-      const second = db.users.find(u => u.id === fixture.player2_id)!;
+      const reversed = fixture.phase === 'knockout' && fixture.next_first_player_id === fixture.player2_id;
+      const first = db.users.find(u => u.id === (reversed ? fixture.player2_id : fixture.player1_id))!;
+      const second = db.users.find(u => u.id === (reversed ? fixture.player1_id : fixture.player2_id))!;
+      const rules = fixture.phase === 'knockout' ? tournament.knockout_rules_json || tournament.rules_json : tournament.rules_json;
       const entry1 = db.tournamentEntries.find(e => e.tournament_id === tournament.id && e.player_id === first.id)!;
       const entry2 = db.tournamentEntries.find(e => e.tournament_id === tournament.id && e.player_id === second.id)!;
       const match: MatchRecord = { id: randomUUID(), seed: randomInt(1, 0x7fffffff),
         player1_id: first.id, player2_id: second.id, match_type: 'bot', status: 'pending', execution_mode: 'server',
-        tournament_id: tournament.id, tournament_phase: 'group', tournament_rules: tournament.rules_json,
+        tournament_id: tournament.id, tournament_phase: fixture.phase, tournament_rules: rules,
         tournament_fixture_id: fixture.id, player1_bot_version: entry1.bot_version, player2_bot_version: entry2.bot_version,
         player1_bot_code: entry1.bot_code_snapshot, player2_bot_code: entry2.bot_code_snapshot,
         player1_key: null, player2_key: null, winner_id: null, final_state_hash: null, replay_sha256: null,
         replay_json: null, player1_proof: null, player2_proof: null, created_at: new Date().toISOString(), completed_at: null };
       fixture.status = 'active'; fixture.match_id = match.id; db.matches.push(match); saveDb();
-      const result = await playServerBotMatch({ matchId: match.id, seed: match.seed, rules: tournament.rules_json,
+      const result = await playServerBotMatch({ matchId: match.id, seed: match.seed, rules,
         codes: [entry1.bot_code_snapshot, entry2.bot_code_snapshot] });
-      if (localRunnerStopped || tournament.status !== 'group_running') return;
+      if (localRunnerStopped || tournament.status !== (fixture.phase === 'group' ? 'group_running' : 'knockout')) return;
       const score1 = result.winner === 1 ? 1 : result.winner === 2 ? 0 : 0.5;
       const before1 = first.elo, before2 = second.elo;
       const after1 = calculateElo(before1, before2, score1), after2 = calculateElo(before2, before1, 1 - score1);

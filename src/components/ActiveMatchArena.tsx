@@ -595,7 +595,7 @@ export const ActiveMatchArena: React.FC<ActiveMatchArenaProps> = ({
 
     (async () => {
       if (session.mySeat !== null) {
-        const id = await generateIdentity();
+        const id = identityRef.current || await generateIdentity();
         if (!active) return;
         identityRef.current = id;
         if (peerPubKeyRef.current) setConsensusReady(true);

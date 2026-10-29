@@ -19,6 +19,10 @@ import {
   tournamentRanks
 } from './tournament-ranks.js';
 import { areBothMatchPlayersOffline } from './match-disconnect.js';
+import { prepareServerKnockout, startServerKnockout, completeServerKnockoutGame } from './knockout-series.js';
+import { registerMatchSessionKey } from './session-key.js';
+import { updateGroupEntryScore } from './group-entry-score.js';
+import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
 import { createTournamentRunner, startServerGroupStage } from './tournament-runner.js';
 import {
   buildTournamentRules,
@@ -212,10 +216,17 @@ async function createMatch(user, paired, mode = 'human') {
   const matchId = randomUUID();
   const seed = randomInt(1, 0x7fffffff);
   const matchType = mode === 'bot' ? 'bot' : 'human';
+  const bots = matchType === 'bot' ? (await pool.query(`SELECT u.id,b.version,b.code FROM users u
+    JOIN user_bot_versions b ON b.user_id=u.id AND b.version=u.active_bot_version
+    WHERE u.id=ANY($1::uuid[])`, [[player1.id,player2.id]])).rows : [];
+  const bot1=bots.find(b=>b.id===player1.id), bot2=bots.find(b=>b.id===player2.id);
+  if (matchType === 'bot' && (!bot1 || !bot2)) throw new Error('Cả hai đấu thủ cần lưu Bot Python trước khi thi đấu xếp hạng.');
   const consensusState = createInitialConsensusState(matchType);
   await pool.query(
-    'INSERT INTO matches(id, seed, player1_id, player2_id, status, match_type, consensus_state) VALUES($1,$2,$3,$4,\'active\',$5,$6::jsonb)',
-    [matchId, seed, player1.id, player2.id, matchType, JSON.stringify(consensusState)]
+    `INSERT INTO matches(id,seed,player1_id,player2_id,status,match_type,consensus_state,
+      player1_bot_version,player2_bot_version,player1_bot_code,player2_bot_code)
+      VALUES($1,$2,$3,$4,'active',$5,$6::jsonb,$7,$8,$9,$10)`,
+    [matchId, seed, player1.id, player2.id, matchType, JSON.stringify(consensusState),bot1?.version,bot2?.version,bot1?.code,bot2?.code]
   );
   const baseMatch = {
     id: matchId,
@@ -239,7 +250,9 @@ async function createMatch(user, paired, mode = 'human') {
       seat,
       opponent: publicUser(other),
       signaling: 'server-relay',
-      mode: matchType
+      mode: matchType,
+      ...(matchType === 'bot' ? { myBotCode: player.id===player1.id?bot1.code:bot2.code,
+        myBotVersion: player.id===player1.id?bot1.version:bot2.version } : {})
     });
   }
 }
@@ -657,8 +670,8 @@ async function prepareGroupKnockoutFixture(tournamentId, userId) {
       [tournamentId]
     );
     const tournament = tournamentResult.rows[0];
-    if (tournament?.execution_mode === 'server' && tournament.status === 'group_running') {
-      throw Object.assign(new Error('Server đang tự chạy vòng bảng; bạn không cần tìm trận.'), { status: 409 });
+    if (tournament?.execution_mode === 'server' && ['group_running','knockout'].includes(tournament.status)) {
+      throw Object.assign(new Error('Server đang tự chạy giải; bạn không cần tìm trận.'), { status: 409 });
     }
     if (!tournament || !['group_running', 'knockout'].includes(tournament.status) ||
         (tournament.status === 'knockout' && new Date(tournament.tournament_starts_at).getTime() > Date.now())) {
@@ -1144,20 +1157,7 @@ async function updateTournamentLifecycle() {
 }
 
 async function registerSessionKey(userId, packet) {
-  if (!packet.matchId || !packet.publicKey) throw new Error('Missing matchId/publicKey');
-  const result = await pool.query('SELECT id, player1_id, player2_id FROM matches WHERE id=$1 AND status IN (\'active\',\'pending\')', [packet.matchId]);
-  const match = result.rows[0];
-  if (!match || !canonicalMatchIds(match).includes(userId)) throw new Error('Player is not part of this active match');
-  const key = packet.publicKey;
-  if (key.kty !== 'EC' || key.crv !== 'P-256' || typeof key.x !== 'string' || typeof key.y !== 'string') throw new Error('Only ECDSA P-256 session keys are accepted');
-  const column = match.player1_id === userId ? 'player1_key' : 'player2_key';
-  await pool.query(`UPDATE matches SET ${column}=$1::jsonb WHERE id=$2`, [JSON.stringify(key), packet.matchId]);
-  const otherId = match.player1_id === userId ? match.player2_id : match.player1_id;
-  await deliverToUser(otherId, 'peer-session-key', { matchId: packet.matchId, playerId: userId, publicKey: key });
-  const otherKey = match.player1_id === userId ? match.player2_key : match.player1_key;
-  if (otherKey) {
-    await deliverToUser(userId, 'peer-session-key', { matchId: packet.matchId, playerId: otherId, publicKey: otherKey });
-  }
+  return registerMatchSessionKey(pool,userId,packet,deliverToUser);
 }
 
 async function updateTournamentEntriesForResult(client, match, score1) {
@@ -1167,28 +1167,7 @@ async function updateTournamentEntriesForResult(client, match, score1) {
     [match.tournament_id]
   );
   if (tournamentType.rows[0]?.format === 'group_knockout') {
-    const entries = await client.query(
-      'SELECT player_id FROM tournament_entries WHERE tournament_id=$1 AND player_id=ANY($2::uuid[]) ORDER BY player_id FOR UPDATE',
-      [match.tournament_id, [match.player1_id, match.player2_id]]
-    );
-    if (entries.rowCount !== 2) {
-      throw Object.assign(new Error('Tournament entry missing for this fixture'), { status: 409 });
-    }
-    for (const [playerId, score] of [
-      [match.player1_id, score1],
-      [match.player2_id, 1 - score1]
-    ]) {
-      await client.query(
-        `UPDATE tournament_entries SET
-           matches_played=matches_played+1,
-           wins=wins+CASE WHEN $3=1 THEN 1 ELSE 0 END,
-           draws=draws+CASE WHEN $3=0.5 THEN 1 ELSE 0 END,
-           losses=losses+CASE WHEN $3=0 THEN 1 ELSE 0 END,
-           points=points+CASE WHEN $3=1 THEN 3 WHEN $3=0.5 THEN 1 ELSE 0 END
-         WHERE tournament_id=$1 AND player_id=$2`,
-        [match.tournament_id, playerId, score]
-      );
-    }
+    await updateGroupEntryScore(client,match,score1);
     return new Map();
   }
   const updatesByPlayer = new Map();
@@ -1254,7 +1233,12 @@ async function completePostgresTournamentFixture(client, match, score1, moveCoun
     [match.tournament_fixture_id, match.tournament_id]
   );
   const fixture = fixtureResult.rows[0];
-  if (!fixture) return;
+  if (!fixture || fixture.match_id !== match.id) return;
+  if (fixture.phase === 'knockout' && fixture.series_best_of === 3) {
+    const winnerId = score1 === 1 ? match.player1_id : score1 === 0 ? match.player2_id : null;
+    await completeServerKnockoutGame(client, fixture, match, winnerId, moveCount);
+    return;
+  }
   if (fixture.phase === 'knockout' && score1 === 0.5) {
     await client.query(
       `UPDATE tournament_fixtures SET status='pending',leg=leg+1,match_id=NULL,
@@ -1905,7 +1889,8 @@ const httpServer = createServer(async (req, res) => {
       const result = await pool.query(
       `SELECT t.id,t.name,t.format,t.description,t.status,t.registration_opens_at,
                 t.registration_closes_at,t.tournament_starts_at,t.ends_at,t.max_teams,
-                t.group_count,t.current_week,t.total_sprints,t.rules_json,t.created_at,
+                 t.group_count,t.current_week,t.total_sprints,t.rules_json,t.created_at,t.min_elo,
+                 t.knockout_rules_json,t.knockout_starts_at,t.knockout_started_at,
                 count(e.tournament_id)::int AS participant_count,
                 count(e.tournament_id)::int AS team_count
          FROM tournaments t LEFT JOIN tournament_entries e ON e.tournament_id=t.id
@@ -2074,6 +2059,7 @@ const httpServer = createServer(async (req, res) => {
         return json(res, 201, { tournament: legacyTournament.rows[0] });
       }
       const registrationOpensAt = new Date(body.registrationOpensAt);
+      const minElo = minimumTournamentElo(body.minElo);
       const registrationClosesAt = new Date(body.registrationClosesAt);
       const tournamentStartsAt = new Date(body.tournamentStartsAt);
       if (!name) return json(res, 400, { error: 'Vui lòng nhập tên giải.' });
@@ -2092,9 +2078,9 @@ const httpServer = createServer(async (req, res) => {
       const created = await pool.query(
         `INSERT INTO tournaments(
            name,format,description,status,registration_opens_at,registration_closes_at,
-           tournament_starts_at,ends_at,max_teams,group_count,rules_json,rules_schedule
+            tournament_starts_at,ends_at,max_teams,group_count,rules_json,rules_schedule,min_elo
          )
-         VALUES($1,'group_knockout',$2,$3,$4,$5,$6,$7,$8,NULL,$9::jsonb,'[]'::jsonb)
+          VALUES($1,'group_knockout',$2,$3,$4,$5,$6,$7,$8,NULL,$9::jsonb,'[]'::jsonb,$10)
          RETURNING *`,
         [
           name,
@@ -2105,7 +2091,7 @@ const httpServer = createServer(async (req, res) => {
           tournamentStartsAt,
           new Date(tournamentStartsAt.getTime() + 90 * 86400000),
           2147483647,
-          JSON.stringify(rules)
+          JSON.stringify(rules), minElo
         ]
       );
       return json(res, 201, { tournament: created.rows[0] });
@@ -2124,7 +2110,7 @@ const httpServer = createServer(async (req, res) => {
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
-    if (req.method === 'POST' && /^\/api\/tournaments\/[0-9a-f-]+\/start-knockout$/i.test(url.pathname)) {
+    if (req.method === 'POST' && /^\/api\/tournaments\/[0-9a-f-]+\/(prepare-knockout|start-knockout)$/i.test(url.pathname)) {
       const auth = authFromHeader(req);
       const admin = await pool.query('SELECT is_admin FROM users WHERE id=$1', [auth.sub]);
       if (!admin.rows[0]?.is_admin) throw Object.assign(new Error('Tournament organizer permission required'), { status: 403 });
@@ -2132,54 +2118,11 @@ const httpServer = createServer(async (req, res) => {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const tournamentResult = await client.query(
-          "SELECT id,status FROM tournaments WHERE id=$1 AND format='group_knockout' FOR UPDATE",
-          [tournamentId]
-        );
-        if (tournamentResult.rows[0]?.status !== 'group_complete') {
-          throw Object.assign(new Error('Vòng bảng chưa hoàn tất.'), { status: 409 });
-        }
-        const remaining = await client.query(
-          `SELECT 1 FROM tournament_fixtures
-           WHERE tournament_id=$1 AND phase='group' AND status<>'completed' LIMIT 1`,
-          [tournamentId]
-        );
-        if (remaining.rowCount) throw Object.assign(new Error('Vòng bảng chưa hoàn tất.'), { status: 409 });
-        const [entrants, fixtures] = await Promise.all([
-          client.query(
-            `SELECT entry.player_id,entry.group_number,entry.registered_at,participant.display_name
-             FROM tournament_entries entry JOIN users participant ON participant.id=entry.player_id
-             WHERE entry.tournament_id=$1 AND entry.group_number IS NOT NULL
-             ORDER BY entry.group_number,entry.registered_at,entry.player_id`,
-            [tournamentId]
-          ),
-          client.query(
-            `SELECT player1_id,player2_id,winner_id,move_count,status
-             FROM tournament_fixtures WHERE tournament_id=$1 AND phase='group'`,
-            [tournamentId]
-          )
-        ]);
-        const standings = calculateGroupStandings(entrants.rows, fixtures.rows);
-        const qualifiers = standings.filter((row, index) =>
-          standings.slice(0, index).filter(previous =>
-            Number(previous.group_number) === Number(row.group_number)
-          ).length < 2
-        );
-        const openingRound = createKnockoutOpeningRound(qualifiers);
-        for (const fixture of openingRound) {
-          await client.query(
-            `INSERT INTO tournament_fixtures(
-               tournament_id,phase,round_number,match_number,leg,player1_id,player2_id,status
-             ) VALUES($1,'knockout',$2,$3,1,$4,$5,'pending')`,
-            [tournamentId, fixture.roundNumber, fixture.matchNumber, fixture.player1Id, fixture.player2Id]
-          );
-        }
-        await client.query(
-          "UPDATE tournaments SET status='knockout' WHERE id=$1 AND status='group_complete'",
-          [tournamentId]
-        );
+        const result = url.pathname.endsWith('/prepare-knockout')
+          ? await prepareServerKnockout(client, tournamentId, await readBody(req))
+          : await startServerKnockout(client, tournamentId);
         await client.query('COMMIT');
-        return json(res, 201, { fixtureCount: openingRound.length });
+        return json(res, 201, result);
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -2492,7 +2435,7 @@ const httpServer = createServer(async (req, res) => {
       try {
         await client.query('BEGIN');
         const tournaments = await client.query(
-          'SELECT id,format,status FROM tournaments WHERE id=ANY($1::uuid[]) FOR UPDATE',
+          'SELECT id,format,status,min_elo FROM tournaments WHERE id=ANY($1::uuid[]) FOR UPDATE',
           [[tournamentId, sourceTournamentId]]
         );
         const target = tournaments.rows.find(row => row.id === tournamentId);
@@ -2524,6 +2467,7 @@ const httpServer = createServer(async (req, res) => {
           throw Object.assign(new Error('The source tournament has no entrants or a registered bot version is missing'), { status: 409 });
         }
         for (const entry of sourceEntries.rows) {
+          requireTournamentElo(target, entry);
           await client.query(
             `INSERT INTO tournament_entries
                (tournament_id,player_id,bot_version,tier,rank_stars,season_points,tournament_elo)
@@ -2554,6 +2498,7 @@ const httpServer = createServer(async (req, res) => {
         const playerResult = await client.query('SELECT elo, active_bot_version FROM users WHERE id=$1 FOR UPDATE', [auth.sub]);
         const player = playerResult.rows[0];
         if (!player) throw Object.assign(new Error('Không tìm thấy tài khoản.'), { status: 404 });
+        requireTournamentElo(tournament, player);
         const existing = await client.query('SELECT 1 FROM tournament_entries WHERE tournament_id=$1 AND player_id=$2', [tournamentId, auth.sub]);
         if (existing.rowCount) throw Object.assign(new Error('Bạn đã đăng ký giải này rồi.'), { status: 409 });
         const total = await client.query('SELECT count(*)::int AS count FROM tournament_entries WHERE tournament_id=$1', [tournamentId]);
@@ -3178,6 +3123,7 @@ async function main() {
   await pool.query(await readFile(new URL('../migrations/015_group_knockout_tournaments.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/016_group_knockout_launch_controls.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/017_server_tournament_runner.sql', import.meta.url), 'utf8'));
+  await pool.query(await readFile(new URL('../migrations/018_knockout_bo3.sql', import.meta.url), 'utf8'));
   await updateTournamentLifecycle();
   tournamentLifecycleTimer = setInterval(() => updateTournamentLifecycle().catch(error => {
     console.error('Tournament lifecycle update failed:', error.message);

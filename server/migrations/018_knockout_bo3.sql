@@ -1,0 +1,12 @@
+ALTER TABLE tournaments
+  ADD COLUMN IF NOT EXISTS knockout_rules_json JSONB,
+  ADD COLUMN IF NOT EXISTS knockout_starts_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS knockout_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS min_elo INTEGER NOT NULL DEFAULT 0 CHECK (min_elo BETWEEN 0 AND 10000);
+ALTER TABLE tournament_fixtures
+  ADD COLUMN IF NOT EXISTS series_best_of INTEGER NOT NULL DEFAULT 1 CHECK (series_best_of IN (1,3)),
+  ADD COLUMN IF NOT EXISTS player1_score NUMERIC NOT NULL DEFAULT 0 CHECK (player1_score >= 0),
+  ADD COLUMN IF NOT EXISTS player2_score NUMERIC NOT NULL DEFAULT 0 CHECK (player2_score >= 0),
+  ADD COLUMN IF NOT EXISTS games_played INTEGER NOT NULL DEFAULT 0 CHECK (games_played >= 0),
+  ADD COLUMN IF NOT EXISTS next_first_player_id UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS series_games JSONB NOT NULL DEFAULT '[]'::jsonb;

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, Search, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
 import { backendClient, type BackendUser, type TournamentItem } from '../core/backendClient';
+import { KnockoutSetup } from './KnockoutSetup';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
 import { useToast } from './ToastProvider';
@@ -92,9 +93,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
   const [resultsFor, setResultsFor] = useState<'all' | 'mine'>('all');
   const [resultSearch, setResultSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const activeRules = ['knockout', 'completed'].includes(tournament.status)
+    ? tournament.knockout_rules_json || tournament.rules_json : tournament.rules_json;
   const mapPreview = useMemo(
-    () => OTTGameEngine.createGame(20261031, 9, tournament.rules_json),
-    [tournament.rules_json]
+    () => OTTGameEngine.createGame(20261031, 9, activeRules),
+    [activeRules]
   );
   const participantCount = Number(detail?.participantCount || 0);
   const eligibleGroupCounts = [8, 16, 32].filter((count) => participantCount >= count * 2);
@@ -204,14 +207,14 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     if (
       !ownEntry ||
       !savedBotVersion ||
-      (tournament.execution_mode === 'server' && tournament.status === 'group_running') ||
+      (tournament.execution_mode === 'server') ||
       !['group_running', 'knockout'].includes(tournament.status)
     ) return;
     void startTournamentMatch();
   }, [ownEntry?.player_id, savedBotVersion, tournament.id, tournament.status, tournament.execution_mode]);
 
   useEffect(() => {
-    if (!['group_running', 'knockout'].includes(tournament.status)) return;
+    if (!['group_running', 'group_complete', 'knockout'].includes(tournament.status)) return;
     let refreshing = false;
     const refresh = async () => {
       if (refreshing || document.visibilityState === 'hidden') return;
@@ -264,6 +267,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
 
   return (
     <div className="space-y-5">
+      {Number(tournament.min_elo || 0) > 0 && <p className="text-xs text-[var(--text-secondary)]">Điều kiện đăng ký: Elo từ {tournament.min_elo} trở lên.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
@@ -287,11 +291,12 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
           {tournament.status === 'registration' && !ownEntry && (
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || Boolean(user && user.elo < Number(tournament.min_elo || 0))}
               onClick={register}
               className="rounded-xl bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
-              {user ? 'Đăng ký tham gia' : 'Đăng nhập để đăng ký'}
+              {user && user.elo < Number(tournament.min_elo || 0)
+                ? `Cần ít nhất ${tournament.min_elo} Elo` : user ? 'Đăng ký tham gia' : 'Đăng nhập để đăng ký'}
             </button>
           )}
         </div>
@@ -374,7 +379,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               <div className="space-y-4 text-sm leading-6 text-[var(--text-secondary)]">
                 {tournament.description && <p className="whitespace-pre-wrap">{tournament.description}</p>}
                 <p>
-                  Bàn đấu 9×9 · {tournament.rules_json?.blockedCells?.length || 0} ô chướng ngại đối xứng.
+                  Bàn đấu 9×9 · {activeRules?.blockedCells?.length || 0} ô chướng ngại đối xứng.
                 </p>
                 <div>
                   <h4 className="font-semibold text-[var(--text-primary)]">Thời gian</h4>
@@ -387,15 +392,15 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 <div>
                   <h4 className="font-semibold text-[var(--text-primary)]">Luật xử lý ván đấu</h4>
                   <p className="mt-1">
-                    {tournament.rules_json?.moveLimitRule === 'standard'
+                    {activeRules?.moveLimitRule === 'standard'
                       ? 'Luật cơ bản: không giới hạn 25 nước; tiếp tục chơi cho đến khi có bên thắng hoặc ván hòa theo luật.'
-                      : tournament.rules_json?.moveLimitRule === 'remaining-pieces'
+                      : activeRules?.moveLimitRule === 'remaining-pieces'
                       ? 'Sau 25 nước đi hoàn chỉnh, bên còn nhiều quân hơn thắng.'
-                      : tournament.rules_json?.moveLimitRule === 'goal-distance'
+                      : activeRules?.moveLimitRule === 'goal-distance'
                       ? 'Sau 25 nước đi hoàn chỉnh, bên có tổng khoảng cách quân đến ô đích nhỏ hơn thắng.'
                       : 'Sau 25 nước đi hoàn chỉnh, so sánh điểm các quân đã ăn được.'}
                   </p>
-                  {tournament.rules_json?.moveLimitRule === 'standard' && (
+                  {activeRules?.moveLimitRule === 'standard' && (
                     <>
                       <p className="mt-1">
                         1. Phe Cam thắng khi chiếm ô i9; phe Tím thắng khi chiếm ô a1. Hoặc diệt sạch 1 trong 3 hệ linh vật của đối phương.
@@ -408,14 +413,14 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                       </p>
                     </>
                   )}
-                  {tournament.rules_json?.moveLimitRule === 'captured-points' && (
+                  {activeRules?.moveLimitRule === 'captured-points' && (
                     <p className="mt-1">
-                      Điểm quân: Đấm {tournament.rules_json?.capturedPieceValues?.rock || 1},
-                      {' '}Lá {tournament.rules_json?.capturedPieceValues?.paper || 2},
-                      {' '}Kéo {tournament.rules_json?.capturedPieceValues?.scissors || 3}.
+                      Điểm quân: Đấm {activeRules?.capturedPieceValues?.rock || 1},
+                      {' '}Lá {activeRules?.capturedPieceValues?.paper || 2},
+                      {' '}Kéo {activeRules?.capturedPieceValues?.scissors || 3}.
                     </p>
                   )}
-                  {tournament.rules_json?.moveLimitRule !== 'standard' && (
+                  {activeRules?.moveLimitRule !== 'standard' && (
                     <p className="mt-1">Nếu điểm bằng nhau sau 25 nước, ván đấu hòa.</p>
                   )}
                 </div>
@@ -528,34 +533,38 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         </section>
       )}
 
-      {activeTournamentTab === 'groups' && user?.isAdmin && tournament.status === 'group_complete' && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
+      {user?.isAdmin && tournament.status === 'group_complete' && (
+        <KnockoutSetup key={tournament.id} groups={groups} rules={tournament.rules_json} submitting={submitting}
+          onStart={settings => perform(
+            () => backendClient.prepareTournamentKnockout(tournament.id, settings),
+            'Đã công bố nhánh, luật và giờ knock-out. Người chơi có thể cập nhật Bot trước khi khởi chạy.'
+          )} />
+      )}
+
+      {tournament.status === 'knockout' && !tournament.knockout_started_at && tournament.execution_mode === 'server' && (
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
           <div>
-            <h3 className="font-bold">Vòng bảng đã kết thúc</h3>
-            <p className="mt-1 text-xs text-[var(--text-secondary)]">
-              Nhất Bảng 1 gặp nhì Bảng 2, nhất Bảng 2 gặp nhì Bảng 1; các bảng tiếp theo ghép theo cặp tương tự.
-            </p>
+            <h3 className="font-bold">Chuẩn bị vòng Knock-out BO3</h3>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">Bắt đầu từ {dateTime(tournament.knockout_starts_at)}. BTC bấm khởi chạy để chốt Bot mới nhất.</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Đấu thủ hãy xem bàn cờ, luật mới và lưu Bot lần 2 trong Phòng Lab trước khi vòng bắt đầu.</p>
           </div>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() => perform(
-              () => backendClient.startTournamentKnockout(tournament.id),
-              'Đã tạo nhánh knock-out từ kết quả vòng bảng.'
-            )}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-          >
-            <Swords className="h-4 w-4" />
-            Tạo nhánh Knock-out
-          </button>
+          {user?.isAdmin ? <button type="button"
+            disabled={submitting || !tournament.knockout_starts_at || new Date(tournament.knockout_starts_at).getTime() > Date.now()}
+            onClick={() => perform(() => backendClient.startTournamentKnockout(tournament.id), 'Đã chốt Bot mới nhất và khởi chạy vòng Knock-out BO3.')}
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
+            <Play className="h-4 w-4" />Khởi chạy vòng Knock-out
+          </button> : ownEntry && <button type="button" onClick={onOpenBotLab}
+            className="rounded-xl border border-[var(--border-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--accent-primary)]">Chỉnh sửa và lưu Bot lần 2</button>}
         </section>
       )}
 
       {activeTournamentTab === 'groups' && !user?.isAdmin && ownEntry && savedBotVersion > 0 &&
         ['group_running', 'knockout'].includes(tournament.status) && (
           <div className="rounded-xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">
-            {tournament.execution_mode === 'server' && tournament.status === 'group_running'
-              ? 'Server đang tự chạy vòng bảng bằng code Bot đã chốt. Bạn có thể đóng trang; kết quả và BXH sẽ tự cập nhật.'
+            {tournament.execution_mode === 'server'
+              ? tournament.status === 'knockout' && !tournament.knockout_started_at
+                ? 'Đang chờ BTC khởi chạy knock-out. Bạn có thể cập nhật Bot theo bàn cờ và luật mới.'
+                : 'Server đang tự chạy bằng code Bot đã chốt. Bạn có thể đóng trang; tỷ số và kết quả sẽ tự cập nhật.'
               : 'Bot đang tự vào lịch đấu. Hãy giữ trang mở để hoàn tất trận knock-out.'}
           </div>
         )}
@@ -754,7 +763,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                   </span>
                   <div>
                     <h3 className="font-bold">Vòng Knock Out</h3>
-                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">Đường đến trận chung kết</p>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">BO3 · Tỷ số cập nhật sau mỗi ván · Bằng điểm sau 3 ván thì đấu ván phụ</p>
                   </div>
                 </div>
                 {bracketRoundCount > 0 && (
@@ -822,7 +831,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                               }}
                             >
                               <span className="mb-1 truncate text-[7px] font-bold uppercase tracking-wide text-[var(--accent-primary)] sm:text-[8px]">
-                                {label}
+                                {label}{fixture?.series_best_of === 3 ? ' · BO3' : ''}
                               </span>
                               <div className={`flex items-center justify-between gap-2 ${fixture?.winner_id && fixture.winner_id === fixture.player1_id ? 'font-bold text-emerald-300' : 'text-[var(--text-secondary)]'}`}>
                                 <span className="flex min-w-0 items-center gap-1.5">
@@ -833,7 +842,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                   />
                                   <span className="min-w-0 truncate">{fixture?.player1 || '?'}</span>
                                 </span>
-                                {fixture?.winner_id && fixture.winner_id === fixture.player1_id && <span className="shrink-0">✓</span>}
+                                {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player1_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player1_id && <span className="shrink-0">✓</span>}
                               </div>
                               <div className="my-1 border-t border-[var(--border-subtle)]" />
                               <div className={`flex items-center justify-between gap-2 ${fixture?.winner_id && fixture.winner_id === fixture.player2_id ? 'font-bold text-emerald-300' : 'text-[var(--text-secondary)]'}`}>
@@ -845,13 +854,14 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                   />
                                   <span className="min-w-0 truncate">{fixture?.player2 || '?'}</span>
                                 </span>
-                                {fixture?.winner_id && fixture.winner_id === fixture.player2_id && <span className="shrink-0">✓</span>}
+                                {fixture?.series_best_of === 3 ? <span className="shrink-0 font-mono font-bold">{Number(fixture.player2_score || 0)}</span> : fixture?.winner_id && fixture.winner_id === fixture.player2_id && <span className="shrink-0">✓</span>}
                               </div>
                               {fixture && (
                                 <p className="mt-1 text-[9px] text-[var(--text-muted)]">
+                                  {fixture.series_best_of === 3 && `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)} · `}
                                   {fixture.status === 'completed'
                                   ? fixture.winner ? `Vào vòng sau: ${fixture.winner}` : 'Hòa · đấu lại'
-                                    : fixture.status === 'active' ? 'Đang thi đấu' : 'Chờ thi đấu'}
+                                    : fixture.status === 'active' ? `Đang đánh ${Number(fixture.games_played || 0) >= 3 ? 'ván phụ' : 'ván ' + (Number(fixture.games_played || 0) + 1)}` : 'Chờ thi đấu'}
                                 </p>
                               )}
                             </article>
@@ -880,7 +890,12 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                           {knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player1 || '?'}
                         </strong>
                       </div>
-                      <span className="my-2 text-[10px] text-[var(--text-muted)]">vs</span>
+                      <span className="my-2 text-sm font-bold text-[var(--accent-primary)]">
+                        {(() => {
+                          const final = knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0];
+                          return final?.series_best_of === 3 ? `${Number(final.player1_score || 0)}–${Number(final.player2_score || 0)} · BO3` : 'vs';
+                        })()}
+                      </span>
                       <div className="flex items-center justify-center gap-1.5 truncate text-xs text-[var(--text-primary)]">
                         <TournamentAvatar
                           avatarId={participantAvatars.get(knockoutRounds.find(([number]) => number === bracketRoundCount)?.[1]?.[0]?.player2_id || '')?.avatarId}
@@ -983,13 +998,16 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                           </p>
                           <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isDraw ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
                             {resultsFor === 'mine'
-                              ? isPersonalDraw ? 'HÒA · +1 ĐIỂM' : isPersonalWin ? 'THẮNG · +3 ĐIỂM' : 'THUA · +0 ĐIỂM'
+                              ? fixture.series_best_of === 3 ? isPersonalWin ? 'THẮNG LOẠT BO3' : 'THUA LOẠT BO3'
+                                : isPersonalDraw ? 'HÒA · +1 ĐIỂM' : isPersonalWin ? 'THẮNG · +3 ĐIỂM' : 'THUA · +0 ĐIỂM'
                               : isDraw ? 'HÒA' : `THẮNG: ${fixture.winner}`}
                           </span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-[var(--text-primary)]">
                           <span>{fixture.player1}</span>
-                          <span className="text-xs font-normal text-[var(--text-muted)]">vs</span>
+                          <span className="text-xs font-bold text-[var(--accent-primary)]">
+                            {fixture.series_best_of === 3 ? `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)} · BO3` : 'vs'}
+                          </span>
                           <span>{fixture.player2}</span>
                         </div>
                         {resultsFor === 'all' && !isDraw && (
@@ -998,7 +1016,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                         {fixture.move_count != null && (
                           <p className="mt-1 text-[10px] text-[var(--text-muted)]">
                             {fixture.move_count} nước
-                            {resultsFor === 'mine' && (
+                            {resultsFor === 'mine' && fixture.phase !== 'knockout' && (
                               <> · Hệ số trận {personalCoefficient > 0 ? '+' : ''}{personalCoefficient}</>
                             )}
                             {fixture.completed_at && (
