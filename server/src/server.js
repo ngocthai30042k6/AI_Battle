@@ -29,13 +29,12 @@ import { registerMatchSessionKey } from './session-key.js';
 import { updateGroupEntryScore } from './group-entry-score.js';
 import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
 import { createTournamentRunner, startServerGroupStage } from './tournament-runner.js';
+import { organizeTournamentGroups, getTournamentGroupEntries, getTournamentFixturePreview } from './tournament-groups.js';
 import {
   buildTournamentRules,
   calculateGroupStandings,
-  createDoubleRoundRobinFixtures,
   createKnockoutOpeningRound,
   createNextKnockoutRound,
-  distributeTournamentGroups
 } from './tournament-format.js';
 
 const pool = new Pool({ connectionString: config.databaseUrl });
@@ -1982,33 +1981,12 @@ const httpServer = createServer(async (req, res) => {
           : Promise.resolve({ rows: [] })
       ]);
       const groupEntries = tournament.format === 'group_knockout'
-        ? (await pool.query(
-          `SELECT entry.player_id,entry.group_number,entry.registered_at,
-                  entry.matches_played,entry.wins,entry.draws,entry.losses,entry.points,
-                  participant.display_name,participant.elo,participant.avatar_id,participant.avatar_url
-           FROM tournament_entries entry JOIN users participant ON participant.id=entry.player_id
-           WHERE entry.tournament_id=$1 AND entry.group_number IS NOT NULL
-           ORDER BY entry.group_number,entry.registered_at,entry.player_id`,
-          [tournamentId]
-        )).rows
+        ? await getTournamentGroupEntries(pool, tournamentId)
         : [];
       const groupFixtures = tournament.format === 'group_knockout'
-        ? (await pool.query(
-          `SELECT fixture.*,p1.display_name AS player1,p2.display_name AS player2,
-                  winner.display_name AS winner
-           FROM tournament_fixtures fixture
-           JOIN users p1 ON p1.id=fixture.player1_id
-           JOIN users p2 ON p2.id=fixture.player2_id
-           LEFT JOIN users winner ON winner.id=fixture.winner_id
-           WHERE fixture.tournament_id=$1
-           ORDER BY fixture.phase,fixture.group_number NULLS LAST,fixture.round_number,
-                    fixture.match_number,fixture.leg`,
-          [tournamentId]
-        )).rows
+        ? await getTournamentFixturePreview(pool, tournamentId)
         : [];
-      const calculatedGroupStandings = tournament.format === 'group_knockout'
-        ? calculateGroupStandings(groupEntries, groupFixtures)
-        : [];
+      const calculatedGroupStandings = groupEntries;
       const groupStandingsPublished = ['group_running', 'group_complete', 'knockout', 'completed'].includes(tournament.status);
       const groups = tournament.format === 'group_knockout'
         ? Array.from({ length: Number(tournament.group_count || 0) }, (_, index) => ({
@@ -2156,56 +2134,9 @@ const httpServer = createServer(async (req, res) => {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const tournamentResult = await client.query(
-          "SELECT id,status,format FROM tournaments WHERE id=$1 FOR UPDATE",
-          [tournamentId]
-        );
-        const tournament = tournamentResult.rows[0];
-        if (!tournament || tournament.format !== 'group_knockout' ||
-            !['registration', 'grouping'].includes(tournament.status)) {
-          throw Object.assign(new Error('Giải không ở trạng thái mở đăng ký hoặc chờ chia bảng.'), { status: 409 });
-        }
-        const entriesResult = await client.query(
-          `SELECT entry.player_id,entry.registered_at,entry.group_number
-           FROM tournament_entries entry
-           JOIN users ON users.id=entry.player_id
-           WHERE entry.tournament_id=$1 AND users.is_admin IS NOT NULL
-           ORDER BY entry.registered_at,entry.player_id FOR UPDATE`,
-          [tournamentId]
-        );
-        const groups = distributeTournamentGroups(entriesResult.rows, Number(body.groupCount));
-        for (const group of groups) {
-          for (const entry of group.entrants) {
-            await client.query(
-              'UPDATE tournament_entries SET group_number=$1 WHERE tournament_id=$2 AND player_id=$3',
-              [group.number, tournamentId, entry.player_id]
-            );
-          }
-        }
-        const fixtures = createDoubleRoundRobinFixtures(groups);
-        for (const [fixtureIndex, fixture] of fixtures.entries()) {
-          await client.query(
-            `INSERT INTO tournament_fixtures(
-               tournament_id,phase,group_number,round_number,match_number,leg,
-               player1_id,player2_id,status
-             ) VALUES($1,'group',$2,$3,$4,$5,$6,$7,'pending')`,
-            [
-              tournamentId,
-              fixture.groupNumber,
-              fixture.roundNumber,
-              fixtureIndex + 1,
-              fixture.leg,
-              fixture.player1Id,
-              fixture.player2Id
-            ]
-          );
-        }
-        await client.query(
-          "UPDATE tournaments SET status='group_stage',group_count=$1,registration_closes_at=now() WHERE id=$2",
-          [groups.length, tournamentId]
-        );
+        const organized = await organizeTournamentGroups(client, tournamentId, Number(body.groupCount));
         await client.query('COMMIT');
-        return json(res, 201, { groupCount: groups.length, fixtureCount: fixtures.length });
+        return json(res, 201, organized);
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;

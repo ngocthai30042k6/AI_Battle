@@ -21,10 +21,10 @@ export async function startServerGroupStage(client, tournamentId) {
   }
   const fixtures = await client.query("SELECT 1 FROM tournament_fixtures WHERE tournament_id=$1 AND phase='group' LIMIT 1", [tournamentId]);
   if (!fixtures.rowCount) throw Object.assign(new Error('Giải chưa có lịch vòng bảng.'), { status: 409 });
-  for (const row of field.rows) {
-    await client.query(`UPDATE tournament_entries SET bot_version=$3,bot_code_snapshot=$4,bot_sha256_snapshot=$5
-      WHERE tournament_id=$1 AND player_id=$2`, [tournamentId, row.player_id, row.active_bot_version, row.code, row.code_sha256]);
-  }
+  await client.query(`UPDATE tournament_entries e SET bot_version=u.active_bot_version,
+    bot_code_snapshot=b.code,bot_sha256_snapshot=b.code_sha256
+    FROM users u JOIN user_bot_versions b ON b.user_id=u.id AND b.version=u.active_bot_version
+    WHERE e.tournament_id=$1 AND e.player_id=u.id`, [tournamentId]);
   return (await client.query(`UPDATE tournaments SET status='group_running',tournament_starts_at=now(),execution_mode='server'
     WHERE id=$1 RETURNING *`, [tournamentId])).rows[0];
 }

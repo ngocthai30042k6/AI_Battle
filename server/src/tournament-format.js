@@ -83,8 +83,7 @@ export function distributeTournamentGroups(entries, groupCount, random = randomI
   return groups;
 }
 
-export function createDoubleRoundRobinFixtures(groups) {
-  const fixtures = [];
+export function* iterateDoubleRoundRobinFixtures(groups) {
   for (const group of groups) {
     const entrants = [...group.entrants];
     if (entrants.length % 2 !== 0) entrants.push(null);
@@ -95,7 +94,7 @@ export function createDoubleRoundRobinFixtures(groups) {
         const first = rotation[index];
         const second = rotation[rotation.length - 1 - index];
         if (first && second) {
-          fixtures.push({
+          yield {
             phase: 'group',
             groupNumber: group.number,
             roundNumber: round + 1,
@@ -103,8 +102,8 @@ export function createDoubleRoundRobinFixtures(groups) {
             player1Id: first.player_id,
             player2Id: second.player_id,
             status: 'pending',
-          });
-          fixtures.push({
+          };
+          yield {
             phase: 'group',
             groupNumber: group.number,
             roundNumber: round + 1 + roundCount,
@@ -112,13 +111,16 @@ export function createDoubleRoundRobinFixtures(groups) {
             player1Id: second.player_id,
             player2Id: first.player_id,
             status: 'pending',
-          });
+          };
         }
       }
       rotation.splice(1, 0, rotation.pop());
     }
   }
-  return fixtures;
+}
+
+export function createDoubleRoundRobinFixtures(groups) {
+  return [...iterateDoubleRoundRobinFixtures(groups)];
 }
 
 export function calculateGroupStandings(entrants, fixtures) {

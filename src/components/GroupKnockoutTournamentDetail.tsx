@@ -70,6 +70,10 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
   const [resultsFor, setResultsFor] = useState<'all' | 'mine'>('all');
   const [resultSearch, setResultSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
+  const organizingRequest = useRef(false);
+  const [visibleGroupRows, setVisibleGroupRows] = useState<Record<number, number>>({});
+  useEffect(() => setVisibleGroupRows({}), [tournament.id, user?.id]);
   const activeRules = ['knockout', 'completed'].includes(tournament.status)
     ? tournament.knockout_rules_json || tournament.rules_json : tournament.rules_json;
   const mapPreview = useMemo(
@@ -455,6 +459,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             <label className="text-xs text-[var(--text-secondary)]">
               Số bảng
               <select
+                disabled={organizing}
                 value={groupCount}
                 onChange={(event) => setGroupCount(Number(event.target.value))}
                 className="mt-1 block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-2 text-sm text-white"
@@ -476,15 +481,20 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             <button
               type="button"
               disabled={submitting || !eligibleGroupCounts.includes(groupCount)}
-              onClick={() =>
-                perform(
+              aria-busy={organizing}
+              onClick={async () => {
+                if (organizingRequest.current) return;
+                organizingRequest.current = true;
+                setOrganizing(true);
+                try { await perform(
                   () => backendClient.createTournamentGroups(tournament.id, groupCount),
                   'Đã chia bảng và tạo lịch vòng tròn hai lượt.'
-                )
-              }
-              className="rounded-xl bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                ); } finally { organizingRequest.current = false; setOrganizing(false); }
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
-              {tournament.status === 'registration' ? 'Tổ chức ngay' : 'Công bố danh sách bảng'}
+              {organizing && <Loader2 className="h-4 w-4 animate-spin" />}
+              {organizing ? 'Đang chia bảng…' : tournament.status === 'registration' ? 'Tổ chức ngay' : 'Công bố danh sách bảng'}
             </button>
             {!eligibleGroupCounts.length && (
               <span className="text-xs text-amber-300">
@@ -492,6 +502,10 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               </span>
             )}
           </div>
+          {organizing && <p role="status" aria-live="polite" className="mt-3 flex items-center gap-2 text-xs text-[var(--accent-primary)]">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            Đang xếp ngẫu nhiên {participantCount.toLocaleString('vi-VN')} đấu thủ và lưu lịch thi đấu. Vui lòng chờ…
+          </p>}
         </section>
       )}
 
@@ -635,7 +649,10 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                 {groups.map((group: any) => {
                   const rows = detail?.groupStandingsPublished ? group.standings : group.members;
-                  const isMyGroup = Boolean(user && rows.some((row: any) => row.player_id === user.id));
+                  const ownIndex = user ? rows.findIndex((row: any) => row.player_id === user.id) : -1;
+                  const isMyGroup = ownIndex >= 0;
+                  const visibleCount = visibleGroupRows[group.group_number] || 8;
+                  const ownRow = ownIndex >= 8 ? rows[ownIndex] : null;
                   return (
                     <div
                       key={group.group_number}
@@ -644,7 +661,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                         : 'border-[var(--border-subtle)]'}`}
                     >
                       <h4 className={`flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs font-bold sm:px-3 ${isMyGroup ? 'bg-orange-500/10 text-[var(--accent-primary)]' : ''}`}>
-                        <span>Bảng {group.group_number}</span>
+                        <span>Bảng {group.group_number} <span className="font-normal text-[var(--text-muted)]">· {rows.length} người</span></span>
                         {isMyGroup && (
                           <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px]">
                             Bảng của bạn
@@ -672,7 +689,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[var(--border-subtle)]">
-                        {rows.map((row: any, index: number) => {
+                        {rows.slice(0, visibleCount).map((row: any, index: number) => {
                           const isAdvancing = index < 2;
                           const eligibilityClass = isAdvancing
                             ? 'bg-emerald-500/15 text-emerald-200'
@@ -712,6 +729,22 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                           </tbody>
                         </table>
                       </div>
+                      {ownRow && (
+                        <div aria-label="Vị trí của bạn" className="mx-2 mb-2 mt-2 rounded-lg border border-[var(--border-accent)] bg-orange-500/10 p-2.5 text-[11px]">
+                          <div className="mb-1 flex items-center justify-between gap-2 font-bold text-[var(--accent-primary)]">
+                            <span>Hạng của bạn</span><span className="font-mono text-sm">#{ownIndex + 1} / {rows.length}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 font-semibold"><TournamentAvatar avatarId={ownRow.avatar_id} avatarUrl={ownRow.avatar_url} name={ownRow.display_name} />{ownRow.display_name} (Bạn)</div>
+                          <p className="mt-1 text-[var(--text-secondary)]">{ownRow.points ?? 0} điểm · {ownRow.matchesPlayed ?? ownRow.matches_played ?? 0} trận · HS {ownRow.moveDifference ?? 0}</p>
+                        </div>
+                      )}
+                      {rows.length > 8 && <div className="flex flex-wrap items-center justify-between gap-1 border-t border-[var(--border-subtle)] px-2.5 py-2">
+                        <span className="text-[10px] text-[var(--text-muted)]">{Math.min(visibleCount, rows.length)} / {rows.length} đấu thủ</span>
+                        <div className="flex gap-2">
+                          {visibleCount > 8 && <button type="button" onClick={() => setVisibleGroupRows(current => ({ ...current, [group.group_number]: 8 }))} className="rounded-lg px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">Thu gọn</button>}
+                          {visibleCount < rows.length && <button type="button" onClick={() => setVisibleGroupRows(current => ({ ...current, [group.group_number]: visibleCount + 8 }))} className="rounded-lg bg-[var(--accent-primary)]/10 px-2 py-1 text-[11px] font-bold text-[var(--accent-primary)] hover:bg-[var(--bg-hover)]">Xem thêm</button>}
+                        </div>
+                      </div>}
                     </div>
                   );
                 })}

@@ -1909,8 +1909,10 @@ export async function startServer(options: ServerStartOptions = {}) {
         avatar_id: db.users.find((u) => u.id === entry.player_id)?.avatar_id || 'pumpkin',
         avatar_url: db.users.find((u) => u.id === entry.player_id)?.avatar_url || null,
       }));
+    let groupPreviewCount = 0;
     const groupFixtures = db.tournamentFixtures
       .filter((fixture) => fixture.tournament_id === t.id)
+      .filter((fixture) => fixture.phase === 'knockout' || groupPreviewCount++ < 100)
       .map((fixture) => ({
         ...fixture,
         player1: db.users.find((u) => u.id === fixture.player1_id)?.display_name || 'Đấu thủ',
@@ -2097,8 +2099,7 @@ export async function startServer(options: ServerStartOptions = {}) {
         for (const entry of group.entrants) entry.group_number = group.number;
       }
       tournament.group_count = groups.length;
-      db.tournamentFixtures.push(
-        ...(createDoubleRoundRobinFixtures(groups) as Array<{
+      const generated = createDoubleRoundRobinFixtures(groups) as Array<{
           phase: 'group';
           groupNumber: number;
           roundNumber: number;
@@ -2106,8 +2107,9 @@ export async function startServer(options: ServerStartOptions = {}) {
           player1Id: string;
           player2Id: string;
           status: 'pending';
-        }>).map((fixture, fixtureIndex) =>
-          createTournamentFixture(tournament.id, {
+        }>;
+      for (const [fixtureIndex, fixture] of generated.entries()) {
+        db.tournamentFixtures.push(createTournamentFixture(tournament.id, {
             phase: 'group',
             group_number: fixture.groupNumber,
             round_number: fixture.roundNumber,
@@ -2116,9 +2118,8 @@ export async function startServer(options: ServerStartOptions = {}) {
             player1_id: fixture.player1Id,
             player2_id: fixture.player2Id,
             status: 'pending',
-          })
-        )
-      );
+          }));
+      }
       tournament.status = 'group_stage';
       tournament.registration_closes_at = new Date().toISOString();
       saveDb();
