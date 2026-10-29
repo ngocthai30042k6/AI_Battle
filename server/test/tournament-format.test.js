@@ -48,18 +48,21 @@ test('validates custom square-board obstacles and 25-move scoring', () => {
 });
 
 test('distributes a balanced field into the requested number of groups', () => {
-  const field = entries(19);
+  const field = entries(35);
   let next = 0;
   const groups = distributeTournamentGroups(field, 8, (_min, max) => next++ % max);
   assert.equal(groups.length, 8);
-  assert.deepEqual(groups.map((group) => group.entrants.length).sort(), [2, 2, 2, 2, 2, 3, 3, 3]);
-  assert.equal(new Set(groups.flatMap((group) => group.entrants.map((entry) => entry.player_id))).size, 19);
+  assert.deepEqual(groups.map((group) => group.entrants.length).sort(), [4, 4, 4, 4, 4, 5, 5, 5]);
+  assert.equal(new Set(groups.flatMap((group) => group.entrants.map((entry) => entry.player_id))).size, 35);
   const sixtyPlayerGroups = distributeTournamentGroups(entries(60), 8);
   assert.deepEqual(
     sixtyPlayerGroups.map((group) => group.entrants.length).sort(),
     [7, 7, 7, 7, 8, 8, 8, 8]
   );
-  assert.throws(() => distributeTournamentGroups(entries(15), 8), /tối thiểu 16/);
+  for (const count of [8,16,32]) {
+    assert.throws(() => distributeTournamentGroups(entries(count * 4 - 1), count), /mỗi bảng cần tối thiểu 4/);
+    assert.ok(distributeTournamentGroups(entries(count * 4),count).every(group=>group.entrants.length===4));
+  }
   const largeFieldGroups = distributeTournamentGroups(entries(100), 8);
   assert.deepEqual(
     largeFieldGroups.map((group) => group.entrants.length).sort((a, b) => a - b),

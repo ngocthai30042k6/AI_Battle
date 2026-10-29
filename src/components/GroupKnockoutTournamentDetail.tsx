@@ -82,7 +82,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     [activeRules]
   );
   const participantCount = Number(detail?.participantCount || 0);
-  const eligibleGroupCounts = [8, 16, 32].filter((count) => participantCount >= count * 2);
+  const eligibleGroupCounts = [8, 16, 32].filter((count) => participantCount >= count * 4);
   const teamsPerGroup = Math.floor(participantCount / groupCount);
   const largerGroupCount = participantCount % groupCount;
   const groups = detail?.groups || [];
@@ -467,7 +467,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               >
                 {[8, 16, 32].map((count) => (
                   <option key={count} value={count} disabled={!eligibleGroupCounts.includes(count)}>
-                    {count} bảng{eligibleGroupCounts.includes(count) ? '' : ` · cần ít nhất ${count * 2} đấu thủ`}
+                    {count} bảng{eligibleGroupCounts.includes(count) ? '' : ` · cần ít nhất ${count * 4} đấu thủ`}
                   </option>
                 ))}
               </select>
@@ -499,7 +499,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             </button>
             {!eligibleGroupCounts.length && (
               <span className="text-xs text-amber-300">
-                Cần ít nhất 16 đấu thủ; mỗi bảng cần có tối thiểu 2 người.
+                Cần ít nhất 32 đấu thủ; mỗi bảng cần có tối thiểu 4 người.
               </span>
             )}
           </div>

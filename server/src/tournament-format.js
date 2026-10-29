@@ -67,8 +67,8 @@ export function distributeTournamentGroups(entries, groupCount, random = randomI
   if (!GROUP_COUNTS.includes(groupCount)) {
     throw new Error('Số bảng phải là 8, 16 hoặc 32.');
   }
-  if (!Array.isArray(entries) || entries.length < groupCount * 2) {
-    throw new Error(`Cần tối thiểu ${groupCount * 2} đấu thủ để chia ${groupCount} bảng.`);
+  if (!Array.isArray(entries) || entries.length < groupCount * 4) {
+    throw new Error(`Cần tối thiểu ${groupCount * 4} đấu thủ để chia ${groupCount} bảng; mỗi bảng cần tối thiểu 4 người.`);
   }
   const shuffled = [...entries];
   for (let index = shuffled.length - 1; index > 0; index--) {

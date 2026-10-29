@@ -1261,7 +1261,7 @@ test('Group/knockout tournament creation publishes balanced groups and a two-leg
 
     let firstParticipant;
     const participants = [];
-    for (let index = 0; index < 16; index++) {
+    for (let index = 0; index < 32; index++) {
       const player = await h.registerUser(`GroupEntrant${index}`, true);
       if (index === 0) firstParticipant = player;
       participants.push(player);
@@ -1285,8 +1285,8 @@ test('Group/knockout tournament creation publishes balanced groups and a two-leg
     assert.equal(detail.data.groups.length, 8);
     assert.equal(detail.data.tournament.status, 'group_stage');
     assert.ok(new Date(detail.data.tournament.registration_closes_at).getTime() <= Date.now());
-    assert.ok(detail.data.groups.every((group) => group.members.length === 2));
-    assert.equal(detail.data.fixtures.length, 16);
+    assert.ok(detail.data.groups.every((group) => group.members.length === 4));
+    assert.equal(detail.data.fixtures.length, 96);
     assert.ok(detail.data.fixtures.every((fixture) => fixture.phase === 'group' && fixture.status === 'pending'));
     assert.equal(detail.data.groupStandingsPublished, false);
 

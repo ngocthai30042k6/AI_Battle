@@ -85,7 +85,7 @@ test('Postgres: bulk organize 1,000 entrants, bounded detail, atomic failure and
     const failedId = randomUUID();
     await pool.query(`INSERT INTO tournaments(id,name,format,status,registration_closes_at,ends_at)
       VALUES($1,'Atomic failure','group_knockout','registration',now(),now()+interval '1 day')`,[failedId]);
-    await pool.query('INSERT INTO tournament_entries(tournament_id,player_id) SELECT $1,id FROM users LIMIT 16',[failedId]);
+    await pool.query('INSERT INTO tournament_entries(tournament_id,player_id) SELECT $1,id FROM users LIMIT 32',[failedId]);
     const failing = await pool.connect();
     try {
       await failing.query('BEGIN');
