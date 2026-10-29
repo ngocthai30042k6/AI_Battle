@@ -647,7 +647,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 Trận: số trận đã đấu · T/H/B: thắng/hòa/bại · Thắng 3 điểm, hòa 1 điểm.
                 {' '}Hệ số = tổng số nước trận thua − tổng số nước trận thắng; thấp hơn được ưu tiên khi bằng điểm.
               </p>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-2 sm:gap-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                 {groups.map((group: any) => {
                   const rows = detail?.groupStandingsPublished ? group.standings : group.members;
                   const isMyGroup = Boolean(user && rows.some((row: any) => row.player_id === user.id));
