@@ -1,3 +1,5 @@
+import { isTournamentMatch } from '../../shared/matchRating.mjs';
+
 export interface BackendUser {
   id: string;
   email: string;
@@ -61,6 +63,7 @@ export interface MatchSummary {
   seed: number;
   status: string;
   match_type?: 'human' | 'bot';
+  tournament_id?: string | null;
   tournament_phase?: 'practice' | 'ranked' | 'group' | 'knockout' | null;
   is_sparring?: boolean;
   winner_id: string | null;
@@ -80,10 +83,12 @@ export interface MatchSummary {
 }
 
 export function getMatchFormatLabel(match: MatchSummary): string {
+  if (isTournamentMatch(match)) return 'Đấu Giải';
   return match.match_type === 'bot' ? 'Bot VS Bot' : 'Người VS Người';
 }
 
 export function getMatchEloLabel(match: MatchSummary, userId: string): string | null {
+  if (isTournamentMatch(match) || match.elo_updated === false) return null;
   const eloBefore =
     typeof match.elo_before === 'number' &&
     Number.isFinite(match.elo_before)

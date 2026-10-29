@@ -13,7 +13,7 @@ test('admin starts offline group games through HTTP; no player websocket is conn
   const p1 = randomUUID(), p2 = randomUUID(), tournamentId = randomUUID();
   const code = "def get_next_move(p,s):\n return s['validMoves'][0]";
   const users = [p1, p2].map((id, index) => ({ id, email: `bot-${index}@example.invalid`, password_hash: 'test',
-    display_name: 'Test '+index, elo: 1200, is_admin: index === 0, active_bot_version: 1 }));
+    display_name: 'Test '+index, elo: index === 0 ? 1100 : 1600, is_admin: index === 0, active_bot_version: 1 }));
   const original = { users, tournaments: [{ id: tournamentId, name: 'Offline test', format: 'group_knockout',
     status: 'group_stage', registration_closes_at: new Date().toISOString(), ends_at: new Date(Date.now()+86400000).toISOString(),
     max_teams: 64, rules_json: {}, rules_schedule: [], current_week: 0 }],
@@ -45,6 +45,10 @@ test('admin starts offline group games through HTTP; no player websocket is conn
     } while (saved.tournaments[0].status !== 'group_complete' && Date.now()<deadline);
     assert.equal(saved.tournaments[0].status, 'group_complete');
     assert.equal(saved.matchResults.length, 2);
+    assert.deepEqual(saved.users.filter(u => [p1,p2].includes(u.id)).map(u => u.elo), [1100,1600]);
+    assert.ok(saved.matchResults.every(r => r.player1_elo_before === r.player1_elo_after && r.player2_elo_before === r.player2_elo_after));
+    const history = await (await fetch(`${base}/api/matches`, {headers:{Authorization:'Bearer '+token}})).json();
+    assert.ok(history.matches.every(m => m.tournament_id === tournamentId && !m.elo_updated && m.elo_delta === null));
     assert.deepEqual(saved.matches.map(m => [m.player1_id,m.player2_id]), [[p1,p2],[p2,p1]]);
     assert.ok(saved.matches.every(m => m.status === 'completed' && m.replay_json.moves.length > 0));
     const detail = await (await fetch(`${base}/api/tournaments/${tournamentId}`)).json();

@@ -43,6 +43,8 @@ test('HTTP: publish rules and time, edit bot twice, admin launches BO3, Elo bloc
     }while(series.status!=='completed' && Date.now()<deadline);
     assert.equal(series.status,'completed');
     assert.deepEqual([series.player1_score,series.player2_score].sort(),[0,2]);
+    for (const original of users) assert.equal(saved.users.find(u => u.id === original.id).elo,original.elo);
+    assert.ok(saved.matchResults.every(r=>r.player1_elo_before===r.player1_elo_after && r.player2_elo_before===r.player2_elo_after));
     const entry=saved.tournamentEntries.find(e=>e.tournament_id===tid && e.player_id===users[0].id);
     assert.equal(entry.bot_version,2);assert.equal(entry.bot_code_snapshot,revised);
     const games=saved.matches.filter(m=>m.tournament_fixture_id===series.id);

@@ -1,6 +1,5 @@
 import { randomUUID, randomInt, createHash } from 'node:crypto';
 import { playServerBotMatch } from './server-bot-match.js';
-import { calculateElo } from './elo.js';
 import { preparePythonRuntime } from './python-bot.js';
 
 export async function startServerGroupStage(client, tournamentId) {
@@ -32,7 +31,7 @@ export async function startServerGroupStage(client, tournamentId) {
 
 // A database session lock owns the running fixture. A restarted instance can
 // recover an interrupted match only after its previous owner has disconnected.
-export function createTournamentRunner({ pool, completeFixture, updateEntries, fideK = 20, play = playServerBotMatch, onError = console.error }) {
+export function createTournamentRunner({ pool, completeFixture, updateEntries, play = playServerBotMatch, onError = console.error }) {
   let busy = false, stopping = false, running = false, timer;
   async function tick() {
     if (busy || stopping) return;
@@ -91,12 +90,9 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, f
       const score1 = result.winner === 1 ? 1 : result.winner === 2 ? 0 : 0.5;
       const users = (await client.query('SELECT id,elo FROM users WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE', [[match.player1_id, match.player2_id]])).rows;
       const user1 = users.find(u => u.id === match.player1_id), user2 = users.find(u => u.id === match.player2_id);
-      const elo1 = calculateElo(user1.elo, user2.elo, score1, fideK);
-      const elo2 = calculateElo(user2.elo, user1.elo, 1 - score1, fideK);
-      await client.query('UPDATE users SET elo=$2 WHERE id=$1', [user1.id, elo1]);
-      await client.query('UPDATE users SET elo=$2 WHERE id=$1', [user2.id, elo2]);
+      // Tournament scores are independent of ranked Elo, including technical wins.
       await client.query(`INSERT INTO match_results(match_id,player1_elo_before,player2_elo_before,player1_elo_after,player2_elo_after,result_player1)
-        VALUES($1,$2,$3,$4,$5,$6)`, [id, user1.elo, user2.elo, elo1, elo2, score1]);
+        VALUES($1,$2,$3,$2,$3,$4)`, [id, user1.elo, user2.elo, score1]);
       await updateEntries(client, match, score1);
       await completeFixture(client, match, score1, result.moveCount);
       const replayJson = JSON.stringify(result.replay);

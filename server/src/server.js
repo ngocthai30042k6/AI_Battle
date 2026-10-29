@@ -7,6 +7,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.js';
 import { createToken, hashPassword, verifyPassword, verifyToken } from './auth.js';
 import { calculateElo } from './elo.js';
+import { isEloRatedMatch, ELO_RATED_MATCH_SQL } from '../../shared/matchRating.mjs';
 import { enqueueOrMatch, cancelQueue, enqueueTournamentOrMatch, cancelTournamentQueue } from './matchmaker.js';
 import { hashCanonical, verifyConsensusDispute, verifyReplay, verifySessionProof } from './replay.js';
 import { createReplayStorage } from './storage.js';
@@ -42,7 +43,7 @@ const redisEvents = redis.duplicate();
 const instanceId = randomUUID();
 const replayStorage = createReplayStorage(config);
 const tournamentRunner = createTournamentRunner({ pool, completeFixture: completePostgresTournamentFixture,
-  updateEntries: updateTournamentEntriesForResult, fideK: config.fideK });
+  updateEntries: updateTournamentEntriesForResult });
 const liveSockets = new Map();
 const searchTimers = new Map();
 const sparringSessions = new Map();
@@ -1353,7 +1354,7 @@ async function adjudicateMatchForfeit(matchId, offenderId, reasonCode, winnerMes
     const player2 = users.rows.find(u => u.id === match.player2_id);
     if (!player1 || !player2) throw new Error('Player in match no longer exists');
 
-    const eloUpdated = match.match_type === 'bot' && !match.is_sparring;
+    const eloUpdated = isEloRatedMatch(match);
     const p1After = eloUpdated ? calculateElo(player1.elo, player2.elo, score1, config.fideK) : player1.elo;
     const p2After = eloUpdated ? calculateElo(player2.elo, player1.elo, 1 - score1, config.fideK) : player2.elo;
     if (eloUpdated) {
@@ -1437,7 +1438,7 @@ async function submitResult(userId, body) {
         winnerId: match.winner_id,
         finalStateHash: match.final_state_hash,
         elo: row ? { player1: { before: row.player1_elo_before, after: row.player1_elo_after }, player2: { before: row.player2_elo_before, after: row.player2_elo_after } } : null,
-        eloUpdated: match.match_type === 'bot' && !match.is_sparring,
+        eloUpdated: isEloRatedMatch(match),
         replaySha256: match.replay_sha256
       };
     }
@@ -1498,7 +1499,7 @@ async function submitResult(userId, body) {
     const u1 = usersResult.rows.find(user => user.id === match.player1_id);
     const u2 = usersResult.rows.find(user => user.id === match.player2_id);
     const score1 = replayResult.winner === 1 ? 1 : replayResult.winner === 2 ? 0 : 0.5;
-    const eloUpdated = match.match_type === 'bot' && !match.is_sparring;
+    const eloUpdated = isEloRatedMatch(match);
     const elo1 = eloUpdated ? calculateElo(u1.elo, u2.elo, score1, config.fideK) : u1.elo;
     const elo2 = eloUpdated ? calculateElo(u2.elo, u1.elo, 1 - score1, config.fideK) : u2.elo;
     const storedReplay = await replayStorage.put(match.id, body.replay);
@@ -1607,7 +1608,7 @@ async function resolveDisconnectedMatch(matchId) {
     const player2 = users.rows.find(user => user.id === match.player2_id);
     if (!player1 || !player2) throw new Error('A player in the disconnected match no longer exists');
 
-    const eloUpdated = match.match_type === 'bot' && !match.is_sparring;
+    const eloUpdated = isEloRatedMatch(match);
     const player1EloAfter = eloUpdated ? calculateElo(player1.elo, player2.elo, score1, config.fideK) : player1.elo;
     const player2EloAfter = eloUpdated ? calculateElo(player2.elo, player1.elo, 1 - score1, config.fideK) : player2.elo;
     if (eloUpdated) {
@@ -1719,7 +1720,7 @@ async function submitConsensusDispute(userId, body) {
           winnerId: decision.winner_id,
           winnerPlayer: decision.winner_id === match.player1_id ? 1 : decision.winner_id === match.player2_id ? 2 : null,
           offenderPlayer: decision.offender_id === match.player1_id ? 1 : decision.offender_id === match.player2_id ? 2 : null,
-          eloUpdated: decision.status === 'adjudicated' && match.match_type === 'bot' && !match.is_sparring,
+          eloUpdated: decision.status === 'adjudicated' && isEloRatedMatch(match),
           player1EloAfter: decision.player1_elo_after,
           player2EloAfter: decision.player2_elo_after,
           message: 'Biên bản tranh chấp của trận đấu này đã được xử lý trước đó.'
@@ -1774,7 +1775,7 @@ async function submitConsensusDispute(userId, body) {
       const player1 = users.rows.find(user => user.id === match.player1_id);
       const player2 = users.rows.find(user => user.id === match.player2_id);
       if (!player1 || !player2) throw new Error('A player in the disputed match no longer exists');
-      const eloUpdated = match.match_type === 'bot' && !match.is_sparring;
+      const eloUpdated = isEloRatedMatch(match);
       const player1EloAfter = eloUpdated ? calculateElo(player1.elo, player2.elo, score1, config.fideK) : player1.elo;
       const player2EloAfter = eloUpdated ? calculateElo(player2.elo, player1.elo, 1 - score1, config.fideK) : player2.elo;
       if (eloUpdated) {
@@ -2585,22 +2586,22 @@ const httpServer = createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/matches') {
       const auth = authFromHeader(req);
-      const result = await pool.query(`SELECT m.id,m.seed,m.status,m.match_type,m.tournament_phase,m.is_sparring,m.winner_id,m.final_state_hash,m.replay_sha256,m.created_at,m.completed_at,
+      const result = await pool.query(`SELECT m.id,m.seed,m.status,m.match_type,m.tournament_id,m.tournament_phase,m.is_sparring,m.winner_id,m.final_state_hash,m.replay_sha256,m.created_at,m.completed_at,
         (m.replay_json IS NOT NULL OR (m.replay_key IS NOT NULL AND $2::boolean)) AS replay_available,
         u1.display_name AS player1,u2.display_name AS player2,m.player1_id,m.player2_id,
-        (r.match_id IS NOT NULL AND m.match_type='bot' AND m.tournament_phase IS DISTINCT FROM 'practice' AND NOT m.is_sparring) AS elo_updated,
+        (r.match_id IS NOT NULL AND ${ELO_RATED_MATCH_SQL}) AS elo_updated,
         CASE
-          WHEN r.match_id IS NULL OR m.match_type<>'bot' OR m.tournament_phase='practice' OR m.is_sparring THEN NULL
+          WHEN r.match_id IS NULL OR NOT (${ELO_RATED_MATCH_SQL}) THEN NULL
           WHEN m.player1_id=$1 THEN r.player1_elo_after-r.player1_elo_before
           ELSE r.player2_elo_after-r.player2_elo_before
         END AS elo_delta,
         CASE
-          WHEN r.match_id IS NULL OR m.match_type<>'bot' OR m.tournament_phase='practice' OR m.is_sparring THEN NULL
+          WHEN r.match_id IS NULL OR NOT (${ELO_RATED_MATCH_SQL}) THEN NULL
           WHEN m.player1_id=$1 THEN r.player1_elo_before
           ELSE r.player2_elo_before
         END AS elo_before,
         CASE
-          WHEN r.match_id IS NULL OR m.match_type<>'bot' OR m.tournament_phase='practice' OR m.is_sparring THEN NULL
+          WHEN r.match_id IS NULL OR NOT (${ELO_RATED_MATCH_SQL}) THEN NULL
           WHEN m.player1_id=$1 THEN r.player1_elo_after
           ELSE r.player2_elo_after
         END AS elo_after

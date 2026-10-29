@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { startServerGroupStage, createTournamentRunner } from '../src/tournament-runner.js';
 import { playServerBotMatch } from '../src/server-bot-match.js';
+import { ELO_RATED_MATCH_SQL } from '../../shared/matchRating.mjs';
 
 test('Postgres: snapshot bots, run both seats offline, recover restart and commit results once', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout: 90000,
@@ -23,7 +24,7 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     const tournamentId = randomUUID(), p1 = randomUUID(), p2 = randomUUID(), fixture1 = randomUUID(), fixture2 = randomUUID();
     const code = "def get_next_move(player,state):\n return state['validMoves'][0]";
     for (const id of [p1, p2]) {
-      await pool.query('INSERT INTO users(id,email,password_hash,display_name,active_bot_version) VALUES($1,$2,$3,$4,1)', [id, id+'@example.invalid', 'test-only', id]);
+      await pool.query('INSERT INTO users(id,email,password_hash,display_name,active_bot_version,elo) VALUES($1,$2,$3,$4,1,$5)', [id, id+'@example.invalid', 'test-only', id, id === p1 ? 1100 : 1600]);
       await pool.query('INSERT INTO user_bot_versions(user_id,version,code,code_sha256) VALUES($1,1,$2,$3)', [id, code, '0'.repeat(64)]);
     }
     await pool.query(`INSERT INTO tournaments(id,name,format,status,registration_closes_at,ends_at)
@@ -80,6 +81,11 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     const results = (await pool.query("SELECT player1_id,player2_id,status,replay_json FROM matches WHERE status='completed' ORDER BY created_at")).rows;
     assert.deepEqual(results.map(m => [m.player1_id,m.player2_id]), [[p1,p2],[p2,p1]]);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM match_results')).rows[0].n, 2);
+    const ratings=(await pool.query('SELECT id,elo FROM users')).rows;
+    assert.equal(ratings.find(u=>u.id===p1).elo,1100);
+    assert.equal(ratings.find(u=>u.id===p2).elo,1600);
+    assert.ok((await pool.query('SELECT * FROM match_results')).rows.every(r=>r.player1_elo_before===r.player1_elo_after && r.player2_elo_before===r.player2_elo_after));
+    assert.ok((await pool.query(`SELECT ${ELO_RATED_MATCH_SQL} AS rated FROM matches m`)).rows.every(r=>r.rated===false));
     assert.equal((await pool.query('SELECT status FROM matches WHERE id=$1', [oldMatch])).rows[0].status, 'abandoned');
     assert.equal((await pool.query('SELECT status FROM tournaments WHERE id=$1', [tournamentId])).rows[0].status, 'group_complete');
     assert.ok(results.every(m => m.replay_json.moves.length > 0));

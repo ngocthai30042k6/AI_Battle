@@ -20,6 +20,7 @@ import { knockoutConfiguration, knockoutStartTime, newKnockoutSeries, recordKnoc
 import { minimumTournamentElo, requireTournamentElo } from './server/src/tournament-eligibility.js';
 import { playServerBotMatch } from './server/src/server-bot-match.js';
 import { qualifiedForKnockout } from './server/src/knockout-public.js';
+import { isEloRatedMatch } from './shared/matchRating.mjs';
 import {
   TOURNAMENT_RANKS,
   applySprintRankReset,
@@ -747,12 +748,7 @@ export async function startServer(options: ServerStartOptions = {}) {
           db.tournamentFixtures = Array.isArray(db.tournamentFixtures) ? db.tournamentFixtures : [];
           const rankedMatchesById = new Map(
             db.matches
-              .filter(
-                (match) =>
-                  match.match_type === 'bot' &&
-                  match.tournament_phase !== 'practice' &&
-                  !match.is_sparring
-              )
+              .filter(isEloRatedMatch)
               .map((match) => [match.id, match])
           );
           const historicalPeakByUser = new Map<string, number>();
@@ -1244,10 +1240,7 @@ export async function startServer(options: ServerStartOptions = {}) {
 
     const winnerId = offenderId === match.player1_id ? match.player2_id : match.player1_id;
     const score1 = winnerId === match.player1_id ? 1 : 0;
-    const eloUpdated =
-      match.match_type === 'bot' &&
-      match.tournament_phase !== 'practice' &&
-      !match.is_sparring;
+    const eloUpdated = isEloRatedMatch(match);
 
     const p1Before = u1.elo;
     const p2Before = u2.elo;
@@ -1711,14 +1704,10 @@ export async function startServer(options: ServerStartOptions = {}) {
             seed: m.seed,
             status: m.status,
             match_type: m.match_type,
+            tournament_id: m.tournament_id,
             tournament_phase: m.tournament_phase,
             is_sparring: Boolean(m.is_sparring),
-            elo_updated: Boolean(
-              mr &&
-                m.match_type === 'bot' &&
-                m.tournament_phase !== 'practice' &&
-                !m.is_sparring
-            ),
+            elo_updated: Boolean(mr && isEloRatedMatch(m)),
             winner_id: m.winner_id,
             final_state_hash: m.final_state_hash,
             replay_sha256: m.replay_sha256,
@@ -1731,27 +1720,21 @@ export async function startServer(options: ServerStartOptions = {}) {
             player2_id: m.player2_id,
             elo_delta:
               mr &&
-              m.match_type === 'bot' &&
-              m.tournament_phase !== 'practice' &&
-              !m.is_sparring
+              isEloRatedMatch(m)
                 ? m.player1_id === user.id
                   ? mr.player1_elo_after - mr.player1_elo_before
                   : mr.player2_elo_after - mr.player2_elo_before
                 : null,
             elo_before:
               mr &&
-              m.match_type === 'bot' &&
-              m.tournament_phase !== 'practice' &&
-              !m.is_sparring
+              isEloRatedMatch(m)
                 ? m.player1_id === user.id
                   ? mr.player1_elo_before
                   : mr.player2_elo_before
                 : null,
             elo_after:
               mr &&
-              m.match_type === 'bot' &&
-              m.tournament_phase !== 'practice' &&
-              !m.is_sparring
+              isEloRatedMatch(m)
                 ? m.player1_id === user.id
                   ? mr.player1_elo_after
                   : mr.player2_elo_after
@@ -2521,10 +2504,7 @@ export async function startServer(options: ServerStartOptions = {}) {
                 player2: { before: mr.player2_elo_before, after: mr.player2_elo_after },
               }
             : null,
-          eloUpdated:
-            match.match_type === 'bot' &&
-            match.tournament_phase !== 'practice' &&
-            !match.is_sparring,
+          eloUpdated: isEloRatedMatch(match),
           tournamentUpdate: ownEntry
             ? {
                 tier: ownEntry.tier,
@@ -2628,10 +2608,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       const u1 = db.users.find((u) => u.id === match.player1_id)!;
       const u2 = db.users.find((u) => u.id === match.player2_id)!;
       const score1 = replayResult.winner === 1 ? 1 : replayResult.winner === 2 ? 0 : 0.5;
-      const eloUpdated =
-        match.match_type === 'bot' &&
-        match.tournament_phase !== 'practice' &&
-        !match.is_sparring;
+      const eloUpdated = isEloRatedMatch(match);
       const u1Before = u1.elo;
       const u2Before = u2.elo;
       const u1After = eloUpdated ? calculateElo(u1Before, u2Before, score1) : u1Before;
@@ -2895,7 +2872,7 @@ export async function startServer(options: ServerStartOptions = {}) {
                 : prior.offender_id === match.player2_id
                 ? 2
                 : null,
-            eloUpdated: prior.status === 'adjudicated' && match.match_type === 'bot' && !match.is_sparring,
+            eloUpdated: prior.status === 'adjudicated' && isEloRatedMatch(match),
             player1EloAfter: mr?.player1_elo_after,
             player2EloAfter: mr?.player2_elo_after,
             message: 'Biên bản tranh chấp của trận này đã được phân xử trước đó.',
@@ -2959,10 +2936,7 @@ export async function startServer(options: ServerStartOptions = {}) {
 
       const u1 = db.users.find((u) => u.id === match.player1_id)!;
       const u2 = db.users.find((u) => u.id === match.player2_id)!;
-      const eloUpdated =
-        match.match_type === 'bot' &&
-        match.tournament_phase !== 'practice' &&
-        !match.is_sparring;
+      const eloUpdated = isEloRatedMatch(match);
       const p1Before = u1.elo;
       const p2Before = u2.elo;
       const p1After = eloUpdated ? calculateElo(p1Before, p2Before, score1) : p1Before;
@@ -3870,9 +3844,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       if (localRunnerStopped || tournament.status !== (fixture.phase === 'group' ? 'group_running' : 'knockout')) return;
       const score1 = result.winner === 1 ? 1 : result.winner === 2 ? 0 : 0.5;
       const before1 = first.elo, before2 = second.elo;
-      const after1 = calculateElo(before1, before2, score1), after2 = calculateElo(before2, before1, 1 - score1);
-      first.elo = after1; second.elo = after2;
-      recordEloPeak(first, after1); recordEloPeak(second, after2);
+      const after1 = before1, after2 = before2;
       applyTournamentScoreForMatch(match, score1);
       match.status = 'completed'; match.winner_id = result.winner === 1 ? first.id : result.winner === 2 ? second.id : null;
       match.final_step_count = result.moveCount; match.final_state_hash = result.finalHash; match.replay_json = result.replay;
