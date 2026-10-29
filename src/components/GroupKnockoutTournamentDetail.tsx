@@ -643,7 +643,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+              <p className="mb-3 text-[10px] text-[var(--text-muted)]">
+                Trận: số trận đã đấu · T/H/B: thắng/hòa/bại · Thắng 3 điểm, hòa 1 điểm.
+                {' '}Hệ số = tổng số nước trận thua − tổng số nước trận thắng; thấp hơn được ưu tiên khi bằng điểm.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
                 {groups.map((group: any) => {
                   const rows = detail?.groupStandingsPublished ? group.standings : group.members;
                   return (
@@ -654,51 +658,66 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                       <h4 className="border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs font-bold sm:px-3">
                         Bảng {group.group_number}
                       </h4>
-                      <div className="divide-y divide-[var(--border-subtle)]">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[310px] table-fixed text-[10px] tabular-nums">
+                          <caption className="sr-only">Điểm và thống kê đấu thủ Bảng {group.group_number}</caption>
+                          <thead className="bg-[var(--bg-canvas)] text-[var(--text-muted)]">
+                            <tr className="border-b border-[var(--border-subtle)]">
+                              <th scope="col" className="w-6 py-2 text-center">#</th>
+                              <th scope="col" className="py-2 text-left">Đấu thủ</th>
+                              <th scope="col" className="w-8 py-2 text-center">Trận</th>
+                              <th scope="col" title="Thắng" className="w-6 py-2 text-center">T</th>
+                              <th scope="col" title="Hòa" className="w-6 py-2 text-center">H</th>
+                              <th scope="col" title="Thua (bại)" className="w-6 py-2 text-center">B</th>
+                              <th scope="col" className="w-9 py-2 text-center">Điểm</th>
+                              <th scope="col" title="Hệ số nước đi" className="w-9 py-2 text-center">HS</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[var(--border-subtle)]">
                         {rows.map((row: any, index: number) => {
                           const isAdvancing = detail?.groupStandingsPublished && index < 2;
                           const eligibilityClass = isAdvancing
                             ? 'bg-emerald-500/[0.08] text-emerald-200'
                             : 'bg-red-500/[0.07] text-red-200';
                           return (
-                            <div
+                            <tr
                               key={row.player_id}
-                              className={`flex min-h-10 items-center gap-1.5 px-2 py-1.5 sm:gap-2 sm:px-2.5 ${detail?.groupStandingsPublished ? eligibilityClass : 'text-[var(--text-secondary)]'}`}
+                              className={detail?.groupStandingsPublished ? eligibilityClass : 'text-[var(--text-secondary)]'}
                             >
-                              <span className="w-4 shrink-0 text-center font-mono text-[10px] opacity-70">
+                              <td className="py-2.5 text-center font-mono opacity-70">
                                 {index + 1}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[11px] font-semibold leading-4 sm:text-xs">
-                                  {row.display_name}
-                                  {row.player_id === user?.id && (
-                                    <span className="ml-1 text-[var(--accent-primary)]">(Bạn)</span>
-                                  )}
-                                </div>
-                                {detail?.groupStandingsPublished && (
-                                  <div className="truncate text-[9px] leading-3 opacity-75">
-                                    {row.wins}-{row.draws}-{row.losses}
-                                    {' · '}Hệ số {row.moveDifference > 0 ? '+' : ''}{row.moveDifference}
+                              </td>
+                              <th scope="row" className="py-2.5 pr-1 text-left font-normal">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <TournamentAvatar avatarId={row.avatar_id} avatarUrl={row.avatar_url} name={row.display_name} />
+                                  <div className="min-w-0">
+                                    <div title={row.display_name} className="truncate text-[11px] font-semibold leading-4">
+                                      {row.display_name}
+                                      {row.player_id === user?.id && (
+                                        <span className="ml-1 text-[var(--accent-primary)]">(Bạn)</span>
+                                      )}
+                                    </div>
+                                    {detail?.groupStandingsPublished && (
+                                      <div className="text-[8px] font-bold leading-3 opacity-75">
+                                        {isAdvancing ? 'ĐI TIẾP' : 'BỊ LOẠI'}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                              {detail?.groupStandingsPublished ? (
-                                <div className="flex shrink-0 flex-col items-end">
-                                  <strong className="text-xs tabular-nums">{row.points}đ</strong>
-                                  <span className="text-[8px] font-bold leading-3">
-                                    {isAdvancing ? 'ĐI TIẾP' : 'BỊ LOẠI'}
-                                  </span>
                                 </div>
-                              ) : (
-                                row.player_id === user?.id && (
-                                  <span className="shrink-0 text-[9px] font-semibold text-[var(--accent-primary)]">
-                                    BẠN
-                                  </span>
-                                )
-                              )}
-                            </div>
+                              </th>
+                              <td className="text-center">{row.matchesPlayed ?? row.matches_played ?? 0}</td>
+                              <td className="text-center">{row.wins ?? 0}</td>
+                              <td className="text-center">{row.draws ?? 0}</td>
+                              <td className="text-center">{row.losses ?? 0}</td>
+                              <td className="text-center font-bold text-[var(--accent-primary)]">{row.points ?? 0}</td>
+                              <td className="text-center font-mono">
+                                {(row.moveDifference ?? 0) > 0 ? '+' : ''}{row.moveDifference ?? 0}
+                              </td>
+                            </tr>
                           );
                         })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   );
