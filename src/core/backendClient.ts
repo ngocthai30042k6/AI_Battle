@@ -123,7 +123,16 @@ export function getMatchEloLabel(match: MatchSummary, userId: string): string | 
   return `${signedDelta} Elo${ratingChange}`;
 }
 
+export interface TournamentFinalist {
+  id: string;
+  display_name: string;
+  avatar_id?: string;
+  avatar_url?: string | null;
+}
+
 export interface TournamentItem {
+  champion?: TournamentFinalist | null;
+  runner_up?: TournamentFinalist | null;
   min_elo?: number;
   knockout_starts_at?: string;
   knockout_started_at?: string;

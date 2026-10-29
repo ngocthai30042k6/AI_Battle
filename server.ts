@@ -20,6 +20,7 @@ import { knockoutConfiguration, knockoutStartTime, newKnockoutSeries, recordKnoc
 import { minimumTournamentElo, requireTournamentElo } from './server/src/tournament-eligibility.js';
 import { playServerBotMatch } from './server/src/server-bot-match.js';
 import { qualifiedForKnockout } from './server/src/knockout-public.js';
+import { localTournamentPodium } from './server/src/tournament-podium.js';
 import { matchLogFilters, matchLogPage, MATCH_LOG_PAGE_SIZE } from './server/src/tournament-match-log.js';
 import { isEloRatedMatch } from './shared/matchRating.mjs';
 import { requireTournamentScheduleGaps } from './shared/tournamentScheduleRules.mjs';
@@ -1837,6 +1838,7 @@ export async function startServer(options: ServerStartOptions = {}) {
       })
       .map((t) => ({
         ...t,
+        ...(t.status === 'completed' ? localTournamentPodium(db.tournamentFixtures.filter(f=>f.tournament_id===t.id),db.users) : {}),
         participant_count: db.tournamentEntries.filter((e) => e.tournament_id === t.id).length,
       }));
     res.json({ tournaments: list });

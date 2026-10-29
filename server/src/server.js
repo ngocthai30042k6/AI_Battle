@@ -30,6 +30,7 @@ import { updateGroupEntryScore } from './group-entry-score.js';
 import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
 import { createTournamentRunner, startServerGroupStage } from './tournament-runner.js';
 import { setTournamentPaused } from './tournament-pause.js';
+import { getTournamentPodiums } from './tournament-podium.js';
 import { organizeTournamentGroups, getTournamentGroupEntries, getTournamentFixturePreview } from './tournament-groups.js';
 import {
   buildTournamentRules,
@@ -1927,7 +1928,8 @@ const httpServer = createServer(async (req, res) => {
                 WHEN 'group_complete' THEN 5 WHEN 'knockout' THEN 6
                 WHEN 'completed' THEN 7 ELSE 8 END,t.created_at DESC`
       );
-      return json(res, 200, { tournaments: result.rows });
+      const podiums = await getTournamentPodiums(pool, result.rows.filter(t=>t.status==='completed').map(t=>t.id));
+      return json(res, 200, { tournaments: result.rows.map(t=>({...t,...podiums.get(t.id)})) });
     }
     if (req.method === 'GET' && /^\/api\/tournaments\/[0-9a-f-]+$/i.test(url.pathname)) {
       await updateTournamentLifecycle();

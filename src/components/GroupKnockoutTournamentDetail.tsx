@@ -5,6 +5,7 @@ import { KnockoutSetup } from './KnockoutSetup';
 import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
 import { KnockoutBattleZone } from './KnockoutBattleZone';
 import { KnockoutFinal } from './KnockoutFinal';
+import { KnockoutChampion } from './KnockoutChampion';
 import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
@@ -804,6 +805,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               {bracketRoundCount > 0 ? (
                 <>
                 <div className="space-y-4 lg:hidden">
+                  <KnockoutChampion final={knockoutFixtures.find((f:any)=>Number(f.round_number)===bracketRoundCount)} avatars={participantAvatars} userId={user?.id} />
                   {knockoutRounds.map(([round, roundFixtures]) => <div key={round} className="space-y-2">
                     <h4 className="text-xs font-bold text-[var(--accent-primary)]">{knockoutRoundLabel(openingMatchCount, round)}</h4>
                     {roundFixtures.map(fixture => <article key={fixture.id} className={`rounded-xl border bg-[var(--bg-canvas)] p-4 ${user && [fixture.player1_id,fixture.player2_id].includes(user.id) ? 'border-orange-400/60' : 'border-[var(--border-subtle)]'}`}>

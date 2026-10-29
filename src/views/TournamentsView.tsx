@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Calendar, Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, BookOpen, Calendar, Crown, Loader2, Plus } from 'lucide-react';
+import { TournamentAvatar } from '../components/TournamentAvatar';
 import { TournamentCreationModal, type TournamentCreatePayload } from '../components/TournamentCreationModal';
 import { TournamentEligibilityDialog } from '../components/TournamentEligibilityDialog';
 import { GroupKnockoutTournamentDetail } from '../components/GroupKnockoutTournamentDetail';
@@ -304,6 +305,19 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
                     {t.description}
                   </p>
                   {Number(t.min_elo || 0) > 0 && <p className="text-sm text-[var(--text-secondary)]">Điều kiện đăng ký: Elo từ {t.min_elo} trở lên.</p>}
+                  {t.status === 'completed' && t.champion && t.runner_up && (
+                    <div className="grid gap-2 pt-2 sm:grid-cols-2" aria-label="Kết quả chung cuộc">
+                      {[{player:t.champion,label:'Nhà vô địch',gold:true},{player:t.runner_up,label:'Á quân',gold:false}].map(({player,label,gold})=>(
+                        <div key={player.id} className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 ${gold ? 'border-amber-300/25 bg-amber-300/5' : 'border-slate-300/15 bg-slate-300/5'}`}>
+                          <TournamentAvatar avatarId={player.avatar_id} avatarUrl={player.avatar_url} name={player.display_name} size="medium" />
+                          <div className="min-w-0">
+                            <p className={`mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${gold?'text-amber-200/75':'text-slate-400'}`}><Crown className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />{label}</p>
+                            <p className={`break-words text-sm font-bold [overflow-wrap:anywhere] ${gold?'text-yellow-400':'text-slate-300'}`}>{player.display_name}{player.id===user?.id?' (Bạn)':''}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-muted)] tabular-nums">

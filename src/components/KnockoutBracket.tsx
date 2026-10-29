@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { KnockoutFinal } from './KnockoutFinal';
+import { KnockoutChampion } from './KnockoutChampion';
 import { TournamentAvatar } from './TournamentAvatar';
 
 type Connection = { key: string; path: string; own: boolean; complete: boolean; x: number; y: number };
@@ -88,9 +89,12 @@ export function KnockoutBracket({ fixtures, openingMatches, avatars, userId }: {
           </article>;
         });
       })}
-      <article data-bracket-round={rounds} data-bracket-match="1" data-bracket-side="final" className="knockout-final-card relative z-10 self-center" style={{gridColumn: rounds, gridRow: `1 / span ${gridRows}`}}>
-        <KnockoutFinal final={final} userId={userId} />
-      </article>
+      <div className="relative z-10 flex min-w-0 flex-col gap-6 self-center" style={{gridColumn: rounds, gridRow: `1 / span ${gridRows}`}}>
+        <KnockoutChampion final={final} avatars={avatars} userId={userId} />
+        <article data-bracket-round={rounds} data-bracket-match="1" data-bracket-side="final" className="knockout-final-card">
+          <KnockoutFinal final={final} userId={userId} />
+        </article>
+      </div>
     </div>
   </div>;
 }

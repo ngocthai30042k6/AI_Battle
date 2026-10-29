@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { getKnockoutNotices, getPublicKnockoutMatches, getReplayForViewer } from '../src/knockout-public.js';
 import { getTournamentMatchLog, matchLogFilters } from '../src/tournament-match-log.js';
+import { getTournamentPodiums, localTournamentPodium } from '../src/tournament-podium.js';
 
 test('Postgres: public knockout games, private replays and qualification notices use real schema', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout:90000,
@@ -59,6 +60,24 @@ test('Postgres: public knockout games, private replays and qualification notices
     assert.deepEqual((await getKnockoutNotices(pool,users[1])).map(n=>n.id),[tid]);
     assert.deepEqual(await getKnockoutNotices(pool,eliminated),[]);
     await pool.query("UPDATE tournaments SET status='completed' WHERE id=$1",[tid]);
+    // A manually ended event with an unfinished final has no invented podium.
+    assert.equal((await getTournamentPodiums(pool,[tid])).size,0);
+    for (const winnerId of [users[0],users[1]]) {
+      await pool.query("UPDATE tournament_fixtures SET status='completed',winner_id=$2 WHERE id=$1",[ko,winnerId]);
+      const podium=(await getTournamentPodiums(pool,[tid])).get(tid);
+      assert.equal(podium.champion.id,winnerId);
+      assert.equal(podium.runner_up.id,winnerId===users[0]?users[1]:users[0]);
+      const fixtures=(await pool.query('SELECT * FROM tournament_fixtures WHERE tournament_id=$1',[tid])).rows;
+      const finalists=(await pool.query('SELECT * FROM users')).rows;
+      assert.deepEqual(JSON.parse(JSON.stringify(localTournamentPodium(fixtures,finalists))),podium);
+      assert.deepEqual(Object.keys(podium.champion).sort(),['avatar_id','avatar_url','display_name','id']);
+    }
+    // A higher, still pending round prevents a semifinal winner being crowned.
+    const pendingFinal=randomUUID();
+    await pool.query(`INSERT INTO tournament_fixtures(id,tournament_id,phase,round_number,match_number,player1_id,player2_id)
+      VALUES($1,$2,'knockout',2,1,$3,$4)`,[pendingFinal,tid,users[0],users[1]]);
+    assert.equal((await getTournamentPodiums(pool,[tid])).size,0);
+    await pool.query('DELETE FROM tournament_fixtures WHERE id=$1',[pendingFinal]);
     assert.deepEqual(await getKnockoutNotices(pool,users[0]),[]);
     assert.equal((await getPublicKnockoutMatches(pool,tid,false)).length,2);
     await pool.query("UPDATE tournaments SET status='cancelled' WHERE id=$1",[tid]);
