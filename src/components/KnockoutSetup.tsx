@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Swords, X } from 'lucide-react';
 import { TournamentCustomization, type TournamentCustomizationValue } from './TournamentCustomization';
+import { DateTimePicker } from './DateTimePicker';
+import { addScheduleTime, deviceTimeZoneLabel, localDateTimeValue, parseLocalDateTime } from '../core/tournamentSchedule';
 
 export type KnockoutSetupPayload = TournamentCustomizationValue & { pairings: string[][]; knockoutStartsAt: string };
 
@@ -29,7 +31,7 @@ export function KnockoutSetup({ groups, rules, fixtures = [], startsAt: schedule
   });
   const [startsAt, setStartsAt] = useState(() => {
     const date = scheduledStart ? new Date(scheduledStart) : new Date(Date.now() + 60 * 60000);
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return localDateTimeValue(date);
   });
   const [seats, setSeats] = useState<string[]>(() => {
     if (fixtures.length) return [...fixtures].sort((a,b) => a.match_number-b.match_number).flatMap(f => [f.player1_id,f.player2_id]);
@@ -69,12 +71,14 @@ export function KnockoutSetup({ groups, rules, fixtures = [], startsAt: schedule
       </div>
       <fieldset disabled={submitting} className="space-y-4 disabled:opacity-60">
         <TournamentCustomization value={settings} onChange={setSettings} />
-        <label className="block text-xs text-[var(--text-secondary)]">
-          <span className="mb-2 block font-semibold">Thời gian bắt đầu vòng Knock-out (giờ trên thiết bị của bạn)</span>
-          <input type="datetime-local" required value={startsAt} onChange={e => setStartsAt(e.target.value)}
-            className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-3 text-white [color-scheme:dark]" />
+        <div className="max-w-md rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-4 text-xs text-[var(--text-secondary)]">
+          <h3 className="mb-1 font-semibold">Thời gian bắt đầu vòng Knock-Out</h3>
+          <p className="mb-3 text-[10px] text-[var(--text-muted)]">{deviceTimeZoneLabel()} · Định dạng 24 giờ</p>
+          <DateTimePicker label="Bắt đầu Knock-Out" value={startsAt} onChange={setStartsAt}
+            error={parseLocalDateTime(startsAt) ? '' : 'Chọn đầy đủ ngày và giờ bắt đầu Knock-Out.'}
+            shortcuts={[{label:'Sau 30 phút',value:()=>addScheduleTime(localDateTimeValue(new Date()),0,30)},{label:'Sau 1 giờ',value:()=>addScheduleTime(localDateTimeValue(new Date()),0,60)}]} />
           <span className="mt-2 block text-[var(--text-muted)]">Người chơi có thể lưu phiên bản Bot mới trước khi BTC khởi chạy.</span>
-        </label>
+        </div>
         <details className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-4">
           <summary className="cursor-pointer text-sm font-semibold">Điều chỉnh các cặp knock-out · {seats.length / 2} cặp</summary>
           <p className="my-3 text-xs text-[var(--text-muted)]">Chọn đấu thủ để hoán đổi vị trí. Mỗi người nhất/nhì bảng xuất hiện đúng một lần; các vòng sau ghép theo thứ tự nhánh.</p>
@@ -98,7 +102,7 @@ export function KnockoutSetup({ groups, rules, fixtures = [], startsAt: schedule
           </div>
         </details>
         <div className="flex justify-end">
-          <button type="button" disabled={submitting || !seats.length || seats.length !== qualifiers.length || !startsAt}
+          <button type="button" disabled={submitting || !seats.length || seats.length !== qualifiers.length || !parseLocalDateTime(startsAt)}
             onClick={async () => {
               if (await onStart({ ...settings, knockoutStartsAt: new Date(startsAt).toISOString(), pairings: Array.from({ length: seats.length / 2 }, (_, i) => seats.slice(i * 2, i * 2 + 2)) })) onClose();
             }}
