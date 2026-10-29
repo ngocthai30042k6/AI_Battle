@@ -650,13 +650,21 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-2 sm:gap-3">
                 {groups.map((group: any) => {
                   const rows = detail?.groupStandingsPublished ? group.standings : group.members;
+                  const isMyGroup = Boolean(user && rows.some((row: any) => row.player_id === user.id));
                   return (
                     <div
                       key={group.group_number}
-                      className="min-w-0 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
+                      className={`min-w-0 overflow-hidden rounded-xl border bg-[var(--bg-elevated)] ${isMyGroup
+                        ? 'border-[var(--accent-primary)] ring-2 ring-[var(--accent-primary)]/30'
+                        : 'border-[var(--border-subtle)]'}`}
                     >
-                      <h4 className="border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs font-bold sm:px-3">
-                        Bảng {group.group_number}
+                      <h4 className={`flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs font-bold sm:px-3 ${isMyGroup ? 'bg-orange-500/10 text-[var(--accent-primary)]' : ''}`}>
+                        <span>Bảng {group.group_number}</span>
+                        {isMyGroup && (
+                          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px]">
+                            Bảng của bạn
+                          </span>
+                        )}
                       </h4>
                       <div>
                         <table className="w-full table-fixed text-[10px] tabular-nums">
@@ -680,14 +688,14 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                           </thead>
                           <tbody className="divide-y divide-[var(--border-subtle)]">
                         {rows.map((row: any, index: number) => {
-                          const isAdvancing = detail?.groupStandingsPublished && index < 2;
+                          const isAdvancing = index < 2;
                           const eligibilityClass = isAdvancing
-                            ? 'bg-emerald-500/[0.08] text-emerald-200'
-                            : 'bg-red-500/[0.07] text-red-200';
+                            ? 'bg-emerald-500/15 text-emerald-200'
+                            : 'bg-red-500/10 text-red-200';
                           return (
                             <tr
                               key={row.player_id}
-                              className={detail?.groupStandingsPublished ? eligibilityClass : 'text-[var(--text-secondary)]'}
+                              className={eligibilityClass}
                             >
                               <td className="py-2.5 text-center font-mono opacity-70">
                                 {index + 1}
@@ -699,12 +707,14 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                     <div className="break-words text-[11px] font-semibold leading-4 [overflow-wrap:anywhere]">
                                       {row.display_name}
                                       {row.player_id === user?.id && (
-                                        <span className="ml-1 text-[var(--accent-primary)]">(Bạn)</span>
+                                        <span className="ml-1 inline-block whitespace-nowrap font-bold text-[var(--accent-primary)]">(Bạn)</span>
                                       )}
                                     </div>
                                     {detail?.groupStandingsPublished && (
                                       <div className="text-[8px] font-bold leading-3 opacity-75">
-                                        {isAdvancing ? 'ĐI TIẾP' : 'BỊ LOẠI'}
+                                        {['group_complete', 'knockout', 'completed'].includes(tournament.status)
+                                          ? (isAdvancing ? 'ĐI TIẾP' : 'BỊ LOẠI')
+                                          : (isAdvancing ? 'TOP 2' : 'NGOÀI TOP 2')}
                                       </div>
                                     )}
                                   </div>
