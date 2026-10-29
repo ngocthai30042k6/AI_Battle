@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   BookOpen,
@@ -77,6 +77,30 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
   const [workspaceLayer, setWorkspaceLayer] = useState<'board' | null>(null);
   const [showDocs, setShowDocs] = useState(false);
   const docsTriggerRef = useRef<HTMLButtonElement>(null);
+  const editorFrameRef = useRef<HTMLDivElement>(null);
+  const sandboxPanelRef = useRef<HTMLDivElement>(null);
+  const [docsHeight, setDocsHeight] = useState(480);
+  useLayoutEffect(() => {
+    if (!showDocs) return;
+    const editor = editorFrameRef.current;
+    const sandbox = sandboxPanelRef.current;
+    if (!editor || !sandbox) return;
+    const measure = () => {
+      const editorBounds = editor.getBoundingClientRect();
+      const sandboxBounds = sandbox.getBoundingClientRect();
+      const padding = parseFloat(getComputedStyle(sandbox).paddingTop) || 0;
+      const sideBySide = sandboxBounds.left >= editorBounds.right;
+      setDocsHeight(Math.max(240, sideBySide
+        ? editorBounds.bottom - sandboxBounds.top - padding - 1
+        : editorBounds.height));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(editor);
+    observer.observe(sandbox);
+    window.addEventListener('resize', measure);
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [showDocs]);
   const closeDocs = () => { setShowDocs(false); docsTriggerRef.current?.focus(); };
   const [showTournamentRules, setShowTournamentRules] = useState(false);
   const [boardDraft, setBoardDraft] = useState<number[]>([]);
@@ -390,7 +414,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
           </div>
 
           {/* Code Editor Textarea */}
-          <div className="relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[#09080f]">
+          <div ref={editorFrameRef} className="relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[#09080f]">
             <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/[0.06] text-[11px] font-mono text-[var(--text-muted)]">
               <span>bot.py · def get_next_move(my_player_id, game_state)</span>
               <span>{editorCode.split('\n').length} dòng</span>
@@ -405,32 +429,9 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
               spellCheck={false}
               rows={20}
               aria-label="Mã nguồn Python 3 của Bot"
-              aria-hidden={showDocs}
-              tabIndex={showDocs ? -1 : 0}
-              className={`code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px] ${showDocs ? 'invisible' : ''}`}
+              className="code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px]"
             />
-            {showDocs && (
-              <section
-                role="region"
-                aria-labelledby="editor-python-docs-title"
-                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeDocs(); } }}
-                className="absolute inset-0 z-10 flex min-h-0 flex-col bg-[#09080f]"
-              >
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3.5 py-2">
-                  <h3 id="editor-python-docs-title" className="text-xs font-semibold text-[var(--text-primary)]">
-                    {PYTHON_BOT_DOCS_TITLE}
-                  </h3>
-                  <button type="button" autoFocus onClick={closeDocs}
-                    aria-label="Đóng tài liệu, quay lại soạn code"
-                    className="shrink-0 rounded-lg p-1.5 text-[var(--text-secondary)] hover:bg-white/10">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-                  <PythonBotDocs />
-                </div>
-              </section>
-            )}
+
           </div>
 
           {/* Syntax feedback */}
@@ -524,9 +525,31 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: 9x9 Sandbox Simulator */}
-        <div className="xl:col-span-6 p-5 sm:p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
-          {workspaceLayer ? (
+        {/* RIGHT COLUMN: Sandbox and documentation layer */}
+        <div ref={sandboxPanelRef} className="xl:col-span-6 p-5 sm:p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
+            {showDocs ? (
+              <section
+                role="region"
+                aria-labelledby="editor-python-docs-title"
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeDocs(); } }}
+                style={{ height: docsHeight }}
+                className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#09080f]"
+              >
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3.5 py-2">
+                  <h3 id="editor-python-docs-title" className="text-xs font-semibold text-[var(--text-primary)]">
+                    {PYTHON_BOT_DOCS_TITLE}
+                  </h3>
+                  <button type="button" autoFocus onClick={closeDocs}
+                    aria-label="Đóng tài liệu, quay lại bàn thử nghiệm"
+                    className="shrink-0 rounded-lg p-1.5 text-[var(--text-secondary)] hover:bg-white/10">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+                  <PythonBotDocs />
+                </div>
+              </section>
+            ) : workspaceLayer ? (
             <div className="flex h-full max-h-[900px] min-h-0 flex-col">
               <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
                 <div className="flex items-center gap-2">
