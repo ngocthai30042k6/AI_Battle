@@ -533,10 +533,10 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                 aria-labelledby="editor-python-docs-title"
                 onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeDocs(); } }}
                 style={{ height: docsHeight }}
-                className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#09080f]"
+                className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[#150e23]"
               >
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3.5 py-2">
-                  <h3 id="editor-python-docs-title" className="text-xs font-semibold text-[var(--text-primary)]">
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
+                  <h3 id="editor-python-docs-title" className="text-lg font-bold leading-snug text-[var(--text-primary)] sm:text-xl">
                     {PYTHON_BOT_DOCS_TITLE}
                   </h3>
                   <button type="button" autoFocus onClick={closeDocs}
