@@ -4,7 +4,6 @@ import {
   Code2,
   Eye,
   Film,
-  LogIn,
   Play,
   Swords,
 } from 'lucide-react';
@@ -270,16 +269,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <Code2 className="w-4 h-4 text-[var(--accent-primary)]" />
               Mở Phòng Lab Bot Python
             </button>
-            {!user && (
-              <button
-                type="button"
-                onClick={() => onOpenAuth('login')}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <LogIn className="w-4 h-4" />
-                Đăng nhập tài khoản
-              </button>
-            )}
           </div>
         </div>
 
@@ -451,14 +440,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 <p className="text-sm text-[var(--text-secondary)]">
                   Đăng nhập tài khoản để lưu lịch sử thi đấu, biến động Elo và biên bản Replay.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => onOpenAuth('login')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  Đăng nhập ngay
-                </button>
               </div>
             ) : visibleMatches.length === 0 ? (
               <div className="py-8 text-center space-y-3">

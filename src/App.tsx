@@ -487,7 +487,7 @@ function AppWorkspace() {
               ) : (
                 <User className="w-3.5 h-3.5" />
               )}
-              {user ? `${user.displayName} · ${user.elo}` : 'Đăng nhập'}
+              {user ? `${user.displayName} · ${user.elo}` : 'Đăng nhập/Đăng kí'}
             </button>
           </div>
         </header>
