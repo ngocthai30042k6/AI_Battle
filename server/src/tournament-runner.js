@@ -33,11 +33,11 @@ export async function startServerGroupStage(client, tournamentId) {
 // A database session lock owns the running fixture. A restarted instance can
 // recover an interrupted match only after its previous owner has disconnected.
 export function createTournamentRunner({ pool, completeFixture, updateEntries, fideK = 20, play = playServerBotMatch, onError = console.error }) {
-  let busy = false, stopping = false, timer;
+  let busy = false, stopping = false, running = false, timer;
   async function tick() {
     if (busy || stopping) return;
     busy = true;
-    let client, ownsLock = false, fixture, match;
+    let client, ownsLock = false, fixture, match, completed = false;
     try {
       client = await pool.connect();
       ownsLock = (await client.query("SELECT pg_try_advisory_lock(80261029, 1) AS locked")).rows[0].locked;
@@ -105,6 +105,7 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, f
       [id, result.winner === 1 ? user1.id : result.winner === 2 ? user2.id : null, result.moveCount,
         result.finalHash, replayJson, createHash('sha256').update(replayJson).digest('hex')]);
       await client.query('COMMIT');
+      completed = true;
     } catch (error) {
       if (client) await client.query('ROLLBACK').catch(() => {});
       onError('Server tournament runner:', error);
@@ -112,11 +113,14 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, f
     } finally {
       if (ownsLock) await client.query('SELECT pg_advisory_unlock(80261029, 1)').catch(() => {});
       client?.release(); busy = false;
+      // Drain a live queue immediately. The interval is only for idle/error
+      // recovery, so fast games no longer wait for the next one-second tick.
+      if (running && completed && !stopping) setImmediate(() => void tick());
     }
   }
   return {
-    start() { timer = setInterval(() => void tick(), 1000); timer.unref(); void tick(); },
+    start() { if (running || stopping) return; running = true; timer = setInterval(() => void tick(), 1000); timer.unref(); void tick(); },
     tick,
-    async stop() { stopping = true; clearInterval(timer); while (busy) await new Promise(r => setTimeout(r, 50)); },
+    async stop() { stopping = true; running = false; clearInterval(timer); while (busy) await new Promise(r => setTimeout(r, 50)); },
   };
 }

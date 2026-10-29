@@ -13,8 +13,10 @@ test('repeated two-player sandboxes stay within the free server memory budget', 
     const timer = setInterval(sample, 10);
     try {
       for (let i = 0; i < 6; i++) {
-        const first = await createPythonBot('def get_next_move(p,s): return None');
-        const second = await createPythonBot('def get_next_move(p,s): return None');
+        const [first,second] = await Promise.all([
+          createPythonBot('def get_next_move(p,s): return None'),
+          createPythonBot('def get_next_move(p,s): return None'),
+        ]);
         try { sample(); await first.move(1, {}); await second.move(2, {}); }
         finally { await first.close(); await second.close(); }
       }
@@ -57,6 +59,21 @@ test('illegal bot moves forfeit; player seats are not reordered', async () => {
   assert.equal(result.winner, 2);
   assert.deepEqual(seats, [['first', 1]]);
   assert.equal(result.fault.reason, 'bot-error-or-timeout');
+});
+
+test('both sandboxes begin loading together while preserving player seats', async () => {
+  const started=[],moves=[];
+  const result=await playServerBotMatch({matchId:'parallel-load',seed:123,codes:['first','second']},code=>{
+    started.push(code);
+    return Promise.resolve().then(()=>{
+      assert.equal(started.length,2);
+      return { move:async seat=>{moves.push([code,seat]);return {from:-1,to:-1};},close:async()=>{} };
+    });
+  });
+  assert.deepEqual(started,['first','second']);
+  assert.deepEqual(moves,[['first',1]]);
+  assert.equal(result.winner,2);
+  assert.equal(result.fault.reason,'bot-error-or-timeout');
 });
 
 test('server computes a game from the submitted Python and saves all moves', async () => {

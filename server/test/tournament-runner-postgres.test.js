@@ -67,7 +67,13 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     });
     // Concurrent calls within one server must not claim the same fixture twice.
     await Promise.all([runner.tick(), runner.tick()]);
-    await runner.tick();
+    // A started runner drains its queue without waiting for another manual tick.
+    runner.start();
+    const deadline=Date.now()+30000;
+    while ((await pool.query('SELECT status FROM tournaments WHERE id=$1',[tournamentId])).rows[0].status!=='group_complete' && Date.now()<deadline) {
+      await new Promise(resolve=>setTimeout(resolve,25));
+    }
+    await runner.stop();
     await runner.tick();
     assert.deepEqual(errors, []);
     assert.equal(played.length, 2);

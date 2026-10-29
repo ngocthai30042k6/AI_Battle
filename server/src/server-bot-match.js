@@ -13,12 +13,14 @@ export async function playServerBotMatch({ matchId, seed, rules, codes, maxPlies
   const deadline = Date.now() + maxMatchMs;
   let fault = null;
   try {
-    // Sequential startup keeps peak memory bounded on the free Render instance.
+    // Compiled WASM is shared; each player still owns an isolated Python runtime.
+    // Loading both players together avoids paying their startup latency twice.
+    const loaded = await Promise.allSettled(codes.map(code => createBot(code)));
     const startupErrors = [];
-    for (let seat = 0; seat < 2; seat++) {
-      try { bots[seat] = await createBot(codes[seat]); }
-      catch { startupErrors.push(seat + 1); }
-    }
+    loaded.forEach((result, seat) => {
+      if (result.status === 'fulfilled') bots[seat] = result.value;
+      else startupErrors.push(seat + 1);
+    });
     if (startupErrors.length) {
       fault = { reason: 'bot-load-error', players: startupErrors };
       state = { ...state, winner: startupErrors.length === 2 ? 0 : 3 - startupErrors[0] };

@@ -10,6 +10,7 @@
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "admin:local": "node scripts/set-local-admin.mjs",
+    "benchmark:server": "node scripts/benchmark-server-matches.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
