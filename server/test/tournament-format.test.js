@@ -78,12 +78,27 @@ test('creates a two-leg round robin without double-booking players in a round', 
     pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
   }
   assert.ok([...pairCounts.values()].every((count) => count === 2));
+  for (const fixture of fixtures) {
+    assert.ok(fixtures.some(other => other.player1Id === fixture.player2Id &&
+      other.player2Id === fixture.player1Id && other.leg !== fixture.leg));
+  }
   for (const round of new Set(fixtures.map((fixture) => fixture.roundNumber))) {
     const participants = fixtures
       .filter((fixture) => fixture.roundNumber === round)
       .flatMap((fixture) => [fixture.player1Id, fixture.player2Id]);
     assert.equal(new Set(participants).size, participants.length);
   }
+});
+
+test('higher move differential wins the tie when points are equal', () => {
+  const standings = calculateGroupStandings(entries(3), [
+    { player1_id: 'player-1', player2_id: 'player-2', winner_id: 'player-1', move_count: 10, status: 'completed' },
+    { player1_id: 'player-2', player2_id: 'player-3', winner_id: 'player-2', move_count: 20, status: 'completed' },
+    { player1_id: 'player-3', player2_id: 'player-1', winner_id: 'player-3', move_count: 30, status: 'completed' },
+  ]);
+  assert.deepEqual(standings.map(row => [row.player_id, row.points, row.moveDifference]), [
+    ['player-1', 3, 20], ['player-2', 3, -10], ['player-3', 3, -10],
+  ]);
 });
 
 test('ranks group players by points then loss-minus-win move differential', () => {

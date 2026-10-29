@@ -5,6 +5,4 @@ ALTER TABLE tournaments ADD CONSTRAINT tournaments_status_check
     'group_complete', 'knockout', 'qualifying', 'completed', 'cancelled'
   ));
 
-UPDATE tournaments
-SET status='group_running'
-WHERE format='group_knockout' AND status='group_stage';
+-- A published schedule must wait for the organizer to start it explicitly.

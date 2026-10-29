@@ -157,7 +157,7 @@ export function calculateGroupStandings(entrants, fixtures) {
   return [...standings.values()].sort((first, second) =>
     Number(first.group_number) - Number(second.group_number) ||
     second.points - first.points ||
-    first.moveDifference - second.moveDifference ||
+    second.moveDifference - first.moveDifference ||
     String(first.registered_at).localeCompare(String(second.registered_at)) ||
     String(first.player_id).localeCompare(String(second.player_id))
   );

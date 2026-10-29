@@ -117,6 +117,7 @@ export function getMatchEloLabel(match: MatchSummary, userId: string): string | 
 }
 
 export interface TournamentItem {
+  execution_mode?: 'browser' | 'server';
   id: string;
   name: string;
   format: string;

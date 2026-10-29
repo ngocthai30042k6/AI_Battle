@@ -3,11 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
-  "scripts": { "start": "node src/server.js", "test": "node --test" },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.800.0",
     "@aws-sdk/s3-request-presigner": "^3.800.0",
+    "@runno/sandbox": "^0.10.2",
     "pg": "^8.13.3",
     "redis": "^4.7.0",
     "ws": "^8.18.0"

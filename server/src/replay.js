@@ -7,6 +7,7 @@ const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(
   value && typeof value === 'object' ? `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}` : JSON.stringify(value);
 const sha256 = value => createHash('sha256').update(canonical(value)).digest('hex');
 export const hashCanonical = value => sha256(value);
+export const hashReplayState = state => sha256(statePayload(state));
 
 function isTerminalWinner(winner) {
   return winner === 0 || winner === 1 || winner === 2;

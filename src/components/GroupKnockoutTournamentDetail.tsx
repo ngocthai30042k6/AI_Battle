@@ -204,10 +204,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     if (
       !ownEntry ||
       !savedBotVersion ||
+      (tournament.execution_mode === 'server' && tournament.status === 'group_running') ||
       !['group_running', 'knockout'].includes(tournament.status)
     ) return;
     void startTournamentMatch();
-  }, [ownEntry?.player_id, savedBotVersion, tournament.id, tournament.status]);
+  }, [ownEntry?.player_id, savedBotVersion, tournament.id, tournament.status, tournament.execution_mode]);
 
   useEffect(() => {
     if (!['group_running', 'knockout'].includes(tournament.status)) return;
@@ -503,12 +504,13 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         </section>
       )}
 
-      {activeTournamentTab === 'groups' && user?.isAdmin && tournament.status === 'group_stage' && (
+      {activeTournamentTab === 'groups' && user?.isAdmin && (tournament.status === 'group_stage' ||
+        (tournament.status === 'group_running' && tournament.execution_mode !== 'server')) && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
           <div>
             <h3 className="font-bold">Vòng bảng đã sẵn sàng</h3>
             <p className="mt-1 text-xs text-[var(--text-secondary)]">
-              Khi bắt đầu, hệ thống mở vòng bảng, ghép các Bot theo lịch và cập nhật kết quả lên BXH. Mỗi đấu thủ cần đăng nhập, lưu Bot và giữ trang giải mở để trình duyệt chạy trận.
+              Server chạy code Bot đã lưu theo lịch vòng tròn hai lượt: mỗi cặp gặp nhau hai lần và đổi bên đi trước. Kết quả tự cập nhật lên BXH, không cần người chơi online. Code Bot được chốt khi khởi chạy.
             </p>
           </div>
           <button
@@ -516,7 +518,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             disabled={submitting}
             onClick={() => perform(
               () => backendClient.startTournamentGroups(tournament.id),
-              'Đã khởi chạy vòng bảng. Các trình duyệt đang mở sẽ tự vào trận theo lịch.'
+              'Server đã nhận lịch vòng bảng và sẽ tự chạy các trận, không cần người chơi online.'
             )}
             className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
           >
@@ -552,7 +554,9 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
       {activeTournamentTab === 'groups' && !user?.isAdmin && ownEntry && savedBotVersion > 0 &&
         ['group_running', 'knockout'].includes(tournament.status) && (
           <div className="rounded-xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">
-            Bot đang tự vào lịch đấu. Hãy giữ app và tài khoản đăng nhập để trình duyệt chạy Bot Python và hoàn tất trận.
+            {tournament.execution_mode === 'server' && tournament.status === 'group_running'
+              ? 'Server đang tự chạy vòng bảng bằng code Bot đã chốt. Bạn có thể đóng trang; kết quả và BXH sẽ tự cập nhật.'
+              : 'Bot đang tự vào lịch đấu. Hãy giữ trang mở để hoàn tất trận knock-out.'}
           </div>
         )}
 
@@ -645,7 +649,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
               </div>
               <p className="mb-3 text-[10px] text-[var(--text-muted)]">
                 Trận: số trận đã đấu · T/H/B: thắng/hòa/bại · Thắng 3 điểm, hòa 1 điểm.
-                {' '}Hệ số = tổng số nước trận thua − tổng số nước trận thắng; thấp hơn được ưu tiên khi bằng điểm.
+                {' '}Hệ số = tổng số nước trận thua − tổng số nước trận thắng; cao hơn được ưu tiên khi bằng điểm.
               </p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                 {groups.map((group: any) => {

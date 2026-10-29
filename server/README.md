@@ -1,5 +1,26 @@
 # OTTv2 backend (Phase 4)
 
+## Server-run group stage
+
+After publishing groups, the organizer presses **Khởi chạy vòng bảng**. Every entrant must
+have a saved Python bot. The server snapshots that code and runs the scheduled double
+round robin: each pair plays twice, with `player1` (the first mover) swapped in the return leg.
+Players can close their browsers. Results, Elo, group points and replays are stored in
+PostgreSQL; the group stage becomes complete after the last fixture finishes.
+
+Python runs in a Runno WebAssembly/WASI virtual filesystem without host filesystem or
+network access. Bot initialization has a 15-second limit and each move has a 2-second
+limit. Invalid moves, Python errors and move timeouts forfeit the game; if both bots fail
+to load, the game is drawn. A 1,000-ply or 60-second match ceiling results in a draw.
+Only one match runs at a time to fit the small hosting instance. Code changes after
+launch do not affect that tournament. A database session lock prevents duplicate runs;
+an interrupted fixture is replayed from the beginning after a restart, without applying
+partial results. Points are ordered descending, then move differential descending.
+
+This requires Node 22+ and installed dependencies in `server/`. Free hosting can suspend
+the process while idle; queued work resumes when the service is awake. Continuous
+unattended tournaments require an always-on host. Knock-out browser play is unchanged.
+
 This service adds account authentication, Redis Elo matchmaking, WebSocket signaling relay, PostgreSQL match ledger, signed result verification, Elo updates, and replay storage. The clients still send game traffic directly over a WebRTC DataChannel after signaling completes.
 
 ## Start with Docker Compose

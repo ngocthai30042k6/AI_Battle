@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
+import { playServerBotMatch } from './server/src/server-bot-match.js';
 import {
   TOURNAMENT_RANKS,
   applySprintRankReset,
@@ -191,6 +192,7 @@ interface BotVersionRecord {
 }
 
 interface TournamentRecord {
+  execution_mode?: 'browser' | 'server';
   id: string;
   name: string;
   format: 'ranked_weekly' | 'group_knockout';
@@ -211,6 +213,8 @@ interface TournamentRecord {
 }
 
 interface TournamentEntryRecord {
+  bot_code_snapshot?: string;
+  bot_sha256_snapshot?: string;
   tournament_id: string;
   player_id: string;
   bot_version: number;
@@ -263,6 +267,7 @@ interface ConsensusTrackState {
 }
 
 interface MatchRecord {
+  execution_mode?: 'browser' | 'server';
   id: string;
   seed: number;
   player1_id: string;
@@ -772,12 +777,6 @@ export async function startServer(options: ServerStartOptions = {}) {
           }
           let groupLifecycleMigrated = false;
           if (db.groupKnockoutLifecycleVersion !== 1) {
-            for (const tournament of db.tournaments) {
-              if (tournament.format === 'group_knockout' && tournament.status === 'group_stage') {
-                tournament.status = 'group_running';
-                groupLifecycleMigrated = true;
-              }
-            }
             db.groupKnockoutLifecycleVersion = 1;
             groupLifecycleMigrated = true;
           }
@@ -997,7 +996,7 @@ export async function startServer(options: ServerStartOptions = {}) {
   function tournamentGroupStandings(tournamentId: string) {
     const entries = db.tournamentEntries
       .filter((entry) => entry.tournament_id === tournamentId && entry.group_number)
-      .map((entry) => ({
+      .map(({ bot_code_snapshot, bot_sha256_snapshot, ...entry }) => ({
         ...entry,
         display_name: db.users.find((user) => user.id === entry.player_id)?.display_name || 'Đấu thủ',
         avatar_id: db.users.find((user) => user.id === entry.player_id)?.avatar_id || 'pumpkin',
@@ -1109,6 +1108,7 @@ export async function startServer(options: ServerStartOptions = {}) {
   }
 
   function getPendingTournamentFixture(tournament: TournamentRecord, playerId: string) {
+    if (tournament.execution_mode === 'server' && tournament.status === 'group_running') return null;
     if (
       tournament.format !== 'group_knockout' ||
       !['group_running', 'knockout'].includes(tournament.status) ||
@@ -1844,7 +1844,7 @@ export async function startServer(options: ServerStartOptions = {}) {
     const isCompleted = t.status === 'completed';
     const groupEntries = entries
       .filter((entry) => entry.group_number)
-      .map((entry) => ({
+      .map(({ bot_code_snapshot, bot_sha256_snapshot, ...entry }) => ({
         ...entry,
         display_name: db.users.find((u) => u.id === entry.player_id)?.display_name || 'Đấu thủ',
         avatar_id: db.users.find((u) => u.id === entry.player_id)?.avatar_id || 'pumpkin',
@@ -2078,14 +2078,29 @@ export async function startServer(options: ServerStartOptions = {}) {
         item.tournament_id === req.params.id && item.phase === 'group'
       );
       if (!tournament || tournament.format !== 'group_knockout' ||
-          tournament.status !== 'group_stage' || !fixtures.length) {
+          !(tournament.status === 'group_stage' ||
+            (tournament.status === 'group_running' && tournament.execution_mode !== 'server')) ||
+          !fixtures.length || fixtures.some(fixture => fixture.status !== 'pending')) {
         res.status(409).json({ error: 'Giải chưa được chia bảng hoặc vòng bảng đã khởi chạy.' });
         return;
       }
+      const entries = db.tournamentEntries.filter(entry => entry.tournament_id === tournament.id);
+      const bots = entries.map(entry => getActiveUserBot(entry.player_id));
+      if (!entries.length || bots.some(bot => !bot?.code?.trim())) {
+        res.status(409).json({ error: 'Mỗi đấu thủ phải lưu Bot Python trước khi khởi chạy vòng bảng.' });
+        return;
+      }
+      entries.forEach((entry, index) => {
+        entry.bot_code_snapshot = bots[index]!.code;
+        entry.bot_sha256_snapshot = createHash('sha256').update(bots[index]!.code).digest('hex');
+        entry.bot_version = bots[index]!.version;
+      });
+      tournament.execution_mode = 'server';
       tournament.status = 'group_running';
       tournament.tournament_starts_at = new Date().toISOString();
       saveDb();
       res.json({ tournament });
+      void runLocalGroupFixture();
     } catch (err: any) {
       res.status(err.status || 500).json({ error: err.message });
     }
@@ -3721,6 +3736,56 @@ export async function startServer(options: ServerStartOptions = {}) {
     });
   });
 
+  let localRunnerBusy = false;
+  let localRunnerStopped = false;
+  async function runLocalGroupFixture() {
+    if (localRunnerBusy || localRunnerStopped) return;
+    localRunnerBusy = true;
+    try {
+      for (const match of db.matches.filter(m => m.execution_mode === 'server' && m.status === 'pending')) {
+        match.status = 'abandoned';
+        const fixture = db.tournamentFixtures.find(f => f.match_id === match.id);
+        if (fixture?.status === 'active') { fixture.status = 'pending'; fixture.match_id = null; }
+      }
+      const fixture = db.tournamentFixtures.filter(f => f.phase === 'group' && f.status === 'pending')
+        .sort((a, b) => a.round_number - b.round_number || a.match_number - b.match_number)
+        .find(f => db.tournaments.some(t => t.id === f.tournament_id && t.execution_mode === 'server' && t.status === 'group_running'));
+      if (!fixture) return;
+      const tournament = db.tournaments.find(t => t.id === fixture.tournament_id)!;
+      const first = db.users.find(u => u.id === fixture.player1_id)!;
+      const second = db.users.find(u => u.id === fixture.player2_id)!;
+      const entry1 = db.tournamentEntries.find(e => e.tournament_id === tournament.id && e.player_id === first.id)!;
+      const entry2 = db.tournamentEntries.find(e => e.tournament_id === tournament.id && e.player_id === second.id)!;
+      const match: MatchRecord = { id: randomUUID(), seed: randomInt(1, 0x7fffffff),
+        player1_id: first.id, player2_id: second.id, match_type: 'bot', status: 'pending', execution_mode: 'server',
+        tournament_id: tournament.id, tournament_phase: 'group', tournament_rules: tournament.rules_json,
+        tournament_fixture_id: fixture.id, player1_bot_version: entry1.bot_version, player2_bot_version: entry2.bot_version,
+        player1_bot_code: entry1.bot_code_snapshot, player2_bot_code: entry2.bot_code_snapshot,
+        player1_key: null, player2_key: null, winner_id: null, final_state_hash: null, replay_sha256: null,
+        replay_json: null, player1_proof: null, player2_proof: null, created_at: new Date().toISOString(), completed_at: null };
+      fixture.status = 'active'; fixture.match_id = match.id; db.matches.push(match); saveDb();
+      const result = await playServerBotMatch({ matchId: match.id, seed: match.seed, rules: tournament.rules_json,
+        codes: [entry1.bot_code_snapshot, entry2.bot_code_snapshot] });
+      if (localRunnerStopped || tournament.status !== 'group_running') return;
+      const score1 = result.winner === 1 ? 1 : result.winner === 2 ? 0 : 0.5;
+      const before1 = first.elo, before2 = second.elo;
+      const after1 = calculateElo(before1, before2, score1), after2 = calculateElo(before2, before1, 1 - score1);
+      first.elo = after1; second.elo = after2;
+      recordEloPeak(first, after1); recordEloPeak(second, after2);
+      applyTournamentScoreForMatch(match, score1);
+      match.status = 'completed'; match.winner_id = result.winner === 1 ? first.id : result.winner === 2 ? second.id : null;
+      match.final_step_count = result.moveCount; match.final_state_hash = result.finalHash; match.replay_json = result.replay;
+      match.replay_sha256 = createHash('sha256').update(JSON.stringify(result.replay)).digest('hex');
+      match.completed_at = new Date().toISOString();
+      db.matchResults.push({ match_id: match.id, player1_elo_before: before1, player2_elo_before: before2,
+        player1_elo_after: after1, player2_elo_after: after2, result_player1: score1, created_at: match.completed_at });
+      completeTournamentFixture(match, match.winner_id, result.moveCount); saveDb();
+    } catch (error) { console.error('Local tournament runner failed:', error); }
+    finally { localRunnerBusy = false; }
+  }
+  const localRunnerTimer = setInterval(() => void runLocalGroupFixture(), 1000);
+  localRunnerTimer.unref();
+
   const disconnectSweepTimer = setInterval(() => {
     try {
       processDisconnectedMatches();
@@ -3769,6 +3834,8 @@ export async function startServer(options: ServerStartOptions = {}) {
   });
 
   const close = async () => {
+    localRunnerStopped = true;
+    clearInterval(localRunnerTimer);
     clearInterval(disconnectSweepTimer);
     clearInterval(lifecycleSweepTimer);
     for (const spar of sparringSessions.values()) spar.destroyed = true;
