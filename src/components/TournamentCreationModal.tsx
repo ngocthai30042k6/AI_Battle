@@ -52,12 +52,22 @@ export const TournamentCreationModal: React.FC<TournamentCreationModalProps> = (
   const [formError, setFormError] = useState('');
   const errors = scheduleErrors(registrationOpensAt, registrationClosesAt, tournamentStartsAt);
   const validSchedule = !Object.values(errors).some(Boolean);
+  const changeClosing = (value: string) => {
+    setRegistrationClosesAt(value);
+    const earliestStart = addScheduleTime(value, 1);
+    if (earliestStart && (!parseLocalDateTime(tournamentStartsAt) || tournamentStartsAt < earliestStart)) setTournamentStartsAt(earliestStart);
+  };
+  const changeOpening = (value: string) => {
+    setRegistrationOpensAt(value);
+    const earliestClose = addScheduleTime(value, 1);
+    if (earliestClose && (!parseLocalDateTime(registrationClosesAt) || registrationClosesAt < earliestClose)) changeClosing(earliestClose);
+  };
   const applyPreset = (days: number) => {
     const opens = parseLocalDateTime(registrationOpensAt) ? registrationOpensAt : localDateTimeValue(new Date());
     const closes = addScheduleTime(opens, days);
     setRegistrationOpensAt(opens);
     setRegistrationClosesAt(closes);
-    setTournamentStartsAt(addScheduleTime(closes, 0, 60));
+    setTournamentStartsAt(addScheduleTime(closes, 1));
     setFormError('');
   };
 
@@ -156,14 +166,14 @@ export const TournamentCreationModal: React.FC<TournamentCreationModalProps> = (
             <legend className="flex items-center gap-2 px-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-orange-400" />Lịch đăng ký và thi đấu</legend>
             <p className="mb-4 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]"><Clock3 className="h-3.5 w-3.5" />{deviceTimeZoneLabel()} · Định dạng 24 giờ</p>
             <div className="mb-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs font-semibold">Thiết lập nhanh</span><div className="flex flex-wrap gap-2">{[1,3,7].map(days => <button key={days} type="button" onClick={() => applyPreset(days)} className="rounded-lg border border-orange-400/20 bg-orange-400/5 px-3 py-2 text-xs font-semibold text-orange-300 hover:bg-orange-400/10">Đăng ký {days} ngày</button>)}</div></div>
-              <p className="mt-2 text-[10px] leading-5 text-[var(--text-muted)]">Giữ mốc mở đăng ký đã chọn, bắt đầu giải sau khi đóng đăng ký 1 giờ.</p>
+              <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs font-semibold">Thiết lập nhanh</span><div className="flex flex-wrap gap-2">{[1,3].map(days => <button key={days} type="button" onClick={() => applyPreset(days)} className="rounded-lg border border-orange-400/20 bg-orange-400/5 px-3 py-2 text-xs font-semibold text-orange-300 hover:bg-orange-400/10">Đăng ký {days} ngày</button>)}</div></div>
+              <p className="mt-2 text-[10px] leading-5 text-[var(--text-muted)]">Đăng ký tối thiểu 1 ngày. Giải tự đặt bắt đầu sau đóng đăng ký 1 ngày; đây cũng là khoảng chuẩn bị tối thiểu.</p>
             </div>
             <div className="grid items-start gap-3 md:grid-cols-3">
               {([
-                {key:'opens',label:'Mở đăng ký',value:registrationOpensAt,set:setRegistrationOpensAt,shortcuts:[{label:'Bây giờ',value:()=>localDateTimeValue(new Date())},{label:'Mai 08:00',value:()=>{const date=new Date();date.setDate(date.getDate()+1);date.setHours(8,0,0,0);return localDateTimeValue(date);}}]},
-                {key:'closes',label:'Đóng đăng ký',value:registrationClosesAt,set:setRegistrationClosesAt,shortcuts:[{label:'Sau mở 1 ngày',value:()=>addScheduleTime(registrationOpensAt,1)},{label:'Sau mở 3 ngày',value:()=>addScheduleTime(registrationOpensAt,3)}]},
-                {key:'starts',label:'Bắt đầu giải',value:tournamentStartsAt,set:setTournamentStartsAt,shortcuts:[{label:'Sau đóng 30 phút',value:()=>addScheduleTime(registrationClosesAt,0,30)},{label:'Sau đóng 1 giờ',value:()=>addScheduleTime(registrationClosesAt,0,60)}]},
+                {key:'opens',label:'Mở đăng ký',value:registrationOpensAt,set:changeOpening,shortcuts:[{label:'Bây giờ',value:()=>localDateTimeValue(new Date())},{label:'Mai 08:00',value:()=>{const date=new Date();date.setDate(date.getDate()+1);date.setHours(8,0,0,0);return localDateTimeValue(date);}}]},
+                {key:'closes',label:'Đóng đăng ký',value:registrationClosesAt,set:changeClosing,shortcuts:[{label:'Sau mở 1 ngày',value:()=>addScheduleTime(registrationOpensAt,1)},{label:'Sau mở 3 ngày',value:()=>addScheduleTime(registrationOpensAt,3)}]},
+                {key:'starts',label:'Bắt đầu giải',value:tournamentStartsAt,set:setTournamentStartsAt,shortcuts:[{label:'Sau đóng 1 ngày',value:()=>addScheduleTime(registrationClosesAt,1)},{label:'Sau đóng 3 ngày',value:()=>addScheduleTime(registrationClosesAt,3)}]},
               ] as const).map((field,index) => <div key={field.key} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
                 <h3 className="mb-3 flex items-center gap-2 text-xs font-bold"><span className="flex h-5 w-5 items-center justify-center rounded-full border border-orange-400/25 bg-orange-400/10 text-[10px] text-orange-300">{index+1}</span>{field.label}</h3>
                 <DateTimePicker label={field.label} value={field.value} onChange={field.set} error={errors[field.key]} shortcuts={[...field.shortcuts]} />

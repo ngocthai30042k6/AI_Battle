@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, Search, Settings2, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, RefreshCw, Search, Settings2, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
 import { backendClient, type BackendUser, type TournamentItem } from '../core/backendClient';
 import { KnockoutSetup } from './KnockoutSetup';
 import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
@@ -11,6 +11,7 @@ import { OTTGameEngine } from '../core/ottEngine';
 import { useToast } from './ToastProvider';
 import { TournamentAvatar } from './TournamentAvatar';
 import { KnockoutBracket } from './KnockoutBracket';
+import { hasKnockoutPlace, tournamentGameOutcome } from '../core/tournamentLog';
 
 interface GroupKnockoutTournamentDetailProps {
   tournament: TournamentItem;
@@ -112,36 +113,53 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
     }
     return participants;
   }, [groups]);
-  const completedMatchLog = useMemo(
-    () => (detail?.matches || []).filter((match: any) => match.status === 'completed'),
-    [detail?.matches]
-  );
-  const personalCompletedFixtures = useMemo(
-    () => completedMatchLog.filter((match: any) =>
-      match.player1_id === user?.id || match.player2_id === user?.id
-    ),
-    [completedMatchLog, user?.id]
-  );
-  const resultFixtures = resultsFor === 'mine' ? personalCompletedFixtures : completedMatchLog;
-  const searchedResults = useMemo(() => {
-    const query = resultSearch.trim().toLocaleLowerCase('vi');
-    if (!query) return resultFixtures;
-    return resultFixtures.filter((fixture: any) => {
-      const details = [
-        fixture.player1,
-        fixture.player2,
-        fixture.winner,
-        fixture.id,
-        fixture.match_id,
-        fixture.phase === 'knockout' ? 'knock-out' : 'vòng bảng',
-        fixture.winner_id ? 'thắng thắng cuộc thua' : 'hòa hòa',
-        fixture.group_number ? `bảng ${fixture.group_number}` : '',
-        `vòng ${fixture.round_number}`,
-        `lượt ${fixture.leg}`,
-      ].join(' ').toLocaleLowerCase('vi');
-      return details.includes(query);
-    });
-  }, [resultFixtures, resultSearch]);
+  const [resultPhase, setResultPhase] = useState<'group' | 'knockout'>('group');
+  const [searchedResults, setSearchedResults] = useState<any[]>([]);
+  const [resultTotal, setResultTotal] = useState(0);
+  const [resultCursor, setResultCursor] = useState<string | null>(null);
+  const [resultLoading, setResultLoading] = useState(false);
+  const [resultError, setResultError] = useState('');
+  const [resultQuery, setResultQuery] = useState('');
+  const [resultRefresh, setResultRefresh] = useState(0);
+  const logRequest = useRef(0);
+  const qualifiedForKnockout = hasKnockoutPlace({...detail,tournament},user?.id);
+  const showKnockoutLog = resultsFor === 'all' || qualifiedForKnockout;
+  const openResults = (scope: 'mine' | 'all') => {
+    setResultsFor(scope); setResultSearch(''); setResultQuery('');
+    setResultPhase(activeTournamentTab === 'knockout' && (scope === 'all' || qualifiedForKnockout) ? 'knockout' : 'group');
+    setShowResults(true);
+  };
+  useEffect(() => {
+    const timer = setTimeout(() => setResultQuery(resultSearch.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [resultSearch]);
+  useEffect(() => {
+    if (!showKnockoutLog && resultPhase === 'knockout') setResultPhase('group');
+  }, [showKnockoutLog,resultPhase]);
+  useEffect(() => {
+    const request = ++logRequest.current;
+    setSearchedResults([]); setResultTotal(0); setResultCursor(null); setResultError('');
+    if (!showResults || !user) return;
+    setResultLoading(true);
+    void backendClient.getTournamentMatchLog(tournament.id,resultPhase,resultsFor,resultQuery).then(page => {
+      if (request !== logRequest.current) return;
+      setSearchedResults(page.matches); setResultTotal(page.total); setResultCursor(page.nextCursor);
+    }).catch(error => {if (request === logRequest.current) setResultError(error.message);})
+      .finally(() => {if (request === logRequest.current) setResultLoading(false);});
+    return () => {logRequest.current++;};
+  }, [showResults,user?.id,tournament.id,resultPhase,resultsFor,resultQuery,resultRefresh]);
+  const loadMoreResults = async () => {
+    if (!resultCursor || resultLoading) return;
+    const request = logRequest.current;
+    setResultLoading(true); setResultError('');
+    try {
+      const page = await backendClient.getTournamentMatchLog(tournament.id,resultPhase,resultsFor,resultQuery,resultCursor);
+      if (request !== logRequest.current) return;
+      setSearchedResults(current => [...current,...page.matches.filter(item=>!current.some(old=>old.id===item.id))]);
+      setResultTotal(page.total); setResultCursor(page.nextCursor);
+    } catch (error: any) {if (request === logRequest.current) setResultError(error.message);}
+    finally {if (request === logRequest.current) setResultLoading(false);}
+  };
 
   const perform = async (action: () => Promise<unknown>, successMessage: string) => {
     setSubmitting(true);
@@ -246,6 +264,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
           Danh sách giải
         </button>
         <div className="flex flex-wrap items-center gap-2">
+          {ownEntry && <button type="button" onClick={() => openResults('mine')} className="inline-flex items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/5 px-3.5 py-2 text-xs font-semibold text-orange-300"><Swords className="h-4 w-4" />Nhật ký đấu giải của bạn</button>}
           {user?.isAdmin && !['completed', 'cancelled'].includes(tournament.status) && (
             <button
               type="button"
@@ -590,35 +609,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                   {user?.isAdmin && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setResultsFor('all');
-                        setResultSearch('');
-                        setShowResults(true);
-                      }}
+                      onClick={() => openResults('all')}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3.5 py-2 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                     >
                       <Search className="h-4 w-4" />
                       Kết quả
-                      <span className="rounded-full bg-[var(--bg-canvas)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
-                        {completedMatchLog.length}
-                      </span>
-                    </button>
-                  )}
-                  {ownEntry && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResultsFor('mine');
-                        setResultSearch('');
-                        setShowResults(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3.5 py-2 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                    >
-                      <Swords className="h-4 w-4" />
-                      Battle result
-                      <span className="rounded-full bg-[var(--bg-canvas)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
-                        {personalCompletedFixtures.length}
-                      </span>
                     </button>
                   )}
                   {ownEntry && (
@@ -794,15 +789,13 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] p-4 sm:p-5">
               <div>
                 <h3 id="tournament-results-heading" className="text-lg font-bold text-[var(--text-primary)]">
-                  {resultsFor === 'mine' ? 'Battle result của bạn' : 'Kết quả trận đấu'}
+                  {resultsFor === 'mine' ? 'Nhật ký đấu giải của bạn' : 'Kết quả trận đấu'}
                 </h3>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  {resultsFor === 'mine'
-                    ? `${personalCompletedFixtures.length} trận đã hoàn tất của bạn · làm mới tự động`
-                    : `Nhật ký ${completedMatchLog.length} trận đã hoàn tất · làm mới tự động khi giải chạy`}
+                  {resultTotal} ván đã hoàn tất · {resultPhase === 'knockout' ? 'Knock-Out' : 'Vòng bảng'}
                 </p>
               </div>
-              <button
+              <div className="flex items-center gap-1"><button type="button" onClick={() => setResultRefresh(value=>value+1)} aria-label="Làm mới nhật ký" className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"><RefreshCw className="h-4 w-4" /></button><button
                 type="button"
                 autoFocus
                 onClick={() => setShowResults(false)}
@@ -810,20 +803,26 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
               >
                 <X className="h-4 w-4" />
-              </button>
+              </button></div>
             </div>
+            <nav aria-label="Vòng trong nhật ký" className="mx-4 mt-4 flex gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-1 sm:mx-5">
+              {(['group',...(showKnockoutLog ? ['knockout'] : [])] as Array<'group'|'knockout'>).map(phase=><button key={phase} type="button" aria-pressed={resultPhase===phase} onClick={()=>setResultPhase(phase)} className={`flex-1 rounded-lg px-4 py-2 text-xs font-bold ${resultPhase===phase ? 'bg-[var(--bg-panel)] text-orange-300' : 'text-[var(--text-secondary)]'}`}>{phase==='group' ? 'Vòng bảng' : 'Knock-Out'}</button>)}
+            </nav>
+            {resultsFor==='mine' && <p className="mx-4 mt-3 text-[10px] text-[var(--text-muted)] sm:mx-5">{resultPhase==='knockout' ? 'Điểm từng ván: thắng +1 · hòa +0.5 · thua +0.' : 'Điểm từng ván: thắng +3 · hòa +1 · thua +0.'}</p>}
             <label className="relative m-4 mb-0 sm:m-5 sm:mb-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
                 type="search"
                 value={resultSearch}
                 onChange={(event) => setResultSearch(event.target.value)}
-                placeholder="Tìm đấu thủ, bảng, vòng hoặc mã trận..."
+                placeholder="Tìm đấu thủ hoặc mã trận trong vòng này..."
                 aria-label="Tìm trong kết quả trận đấu"
                 className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] py-2.5 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--border-accent)]"
               />
             </label>
             <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+              {resultError && <p role="alert" className="mb-3 text-xs text-red-300">{resultError}</p>}
+              {resultLoading && !searchedResults.length && <p role="status" className="flex items-center justify-center gap-2 p-8 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" />Đang tải nhật ký…</p>}
               {searchedResults.length ? (
                 <div className="space-y-2">
                   {searchedResults.map((fixture: any) => {
@@ -849,19 +848,18 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                               ? `Knock-out · Vòng ${fixture.round_number}`
                               : `Bảng ${fixture.group_number} · Vòng ${fixture.round_number} · Lượt ${fixture.leg}`}
                           </p>
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isDraw ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${isDraw ? 'bg-amber-500/10 text-amber-300' : resultsFor === 'mine' && !isPersonalWin ? 'bg-red-500/10 text-red-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
                             {resultsFor === 'mine'
-                              ? fixture.series_best_of === 3 ? isPersonalWin ? 'THẮNG LOẠT BO3' : 'THUA LOẠT BO3'
-                                : isPersonalDraw ? 'HÒA · +1 ĐIỂM' : isPersonalWin ? 'THẮNG · +3 ĐIỂM' : 'THUA · +0 ĐIỂM'
+                              ? tournamentGameOutcome(fixture,user.id)
                               : isDraw ? 'HÒA' : `THẮNG: ${fixture.winner}`}
                           </span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-[var(--text-primary)]">
-                          <span>{fixture.player1}</span>
+                          <span className={fixture.player1_id===user.id ? 'text-orange-300' : ''}>{fixture.player1}{fixture.player1_id===user.id ? ' (Bạn)' : ''}</span>
                           <span className="text-xs font-bold text-[var(--accent-primary)]">
                             {fixture.series_best_of === 3 ? `${Number(fixture.player1_score || 0)}–${Number(fixture.player2_score || 0)} · BO3` : 'vs'}
                           </span>
-                          <span>{fixture.player2}</span>
+                          <span className={fixture.player2_id===user.id ? 'text-orange-300' : ''}>{fixture.player2}{fixture.player2_id===user.id ? ' (Bạn)' : ''}</span>
                         </div>
                         {resultsFor === 'all' && !isDraw && (
                           <p className="mt-1 text-xs text-[var(--text-muted)]">Thua: {loser}</p>
@@ -882,15 +880,16 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                     );
                   })}
                 </div>
-              ) : (
+              ) : !resultLoading && !resultError ? (
                 <div className="rounded-xl border border-dashed border-[var(--border-subtle)] p-8 text-center text-sm text-[var(--text-muted)]">
                   {resultSearch.trim()
                     ? 'Không tìm thấy trận phù hợp.'
                     : resultsFor === 'mine'
-                    ? 'Bạn chưa có trận nào hoàn tất trong giải này.'
+                    ? `Bạn chưa có ván nào hoàn tất ở ${resultPhase === 'knockout' ? 'Knock-Out' : 'vòng bảng'}.`
                     : 'Chưa có trận nào hoàn tất. Kết quả sẽ xuất hiện tại đây sau khi Bot thi đấu.'}
                 </div>
-              )}
+              ) : null}
+              {resultCursor && <div className="mt-4 text-center"><p className="mb-2 text-[10px] text-[var(--text-muted)]">Đã tải {searchedResults.length}/{resultTotal} ván</p><button type="button" disabled={resultLoading} onClick={()=>void loadMoreResults()} className="rounded-xl border border-orange-400/30 px-4 py-2 text-xs font-bold text-orange-300 disabled:opacity-50">{resultLoading ? 'Đang tải…' : 'Xem thêm trận'}</button></div>}
             </div>
           </section>
         </div>

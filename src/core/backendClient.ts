@@ -83,6 +83,8 @@ export interface MatchSummary {
 }
 
 export function getMatchFormatLabel(match: MatchSummary): string {
+  if (match.tournament_phase === 'knockout') return 'Đấu Giải (Knock-Out)';
+  if (match.tournament_phase === 'group') return 'Đấu Giải (Vòng bảng)';
   if (isTournamentMatch(match)) return 'Đấu Giải';
   return match.match_type === 'bot' ? 'Bot VS Bot' : 'Người VS Người';
 }
@@ -382,6 +384,12 @@ export class BackendClient {
   async getKnockoutMatches(id: string): Promise<any[]> {
     const res = await this.request(`/api/tournaments/${encodeURIComponent(id)}/knockout-matches`);
     return res.matches || [];
+  }
+
+  async getTournamentMatchLog(id: string, phase: 'group' | 'knockout', scope: 'mine' | 'all', search = '', cursor?: string) {
+    const params = new URLSearchParams({phase,scope,q:search});
+    if (cursor) params.set('cursor',cursor);
+    return this.request(`/api/tournaments/${encodeURIComponent(id)}/match-log?${params}`, 'GET', undefined, true) as Promise<{matches:any[];total:number;nextCursor:string|null}>;
   }
 
   async createTournament(payload: {

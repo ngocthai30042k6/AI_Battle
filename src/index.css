@@ -308,7 +308,10 @@ input[type='range']:focus-visible {
 
 :where(button:not(:disabled):not([aria-disabled='true']):not([data-ui-feedback='off']):not([data-ui-feedback='off'] button)) {
   cursor: pointer;
-  transition: scale 130ms ease, filter 130ms ease, background-color 150ms ease, border-color 150ms ease;
+  transition: scale 240ms cubic-bezier(.2,.75,.25,1), filter 200ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  :where(button:not(:disabled):not([aria-disabled='true']):not([data-ui-feedback='off']):not([data-ui-feedback='off'] button)):hover { scale: 1.035; filter: brightness(1.06); }
 }
 :where(button:not(:disabled):not([aria-disabled='true']):not([data-ui-feedback='off']):not([data-ui-feedback='off'] button)):active { scale: .97; filter: brightness(1.12); }
 .ui-click-ring { position: fixed; z-index: 130; pointer-events: none; border: 1px solid rgba(251, 146, 60, .7); box-shadow: 0 0 12px rgba(249, 115, 22, .12); animation: buttonClickRing 300ms ease-out forwards; }
@@ -317,7 +320,7 @@ input[type='range']:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .knockout-podium-halo, .ui-click-ring { animation: none !important; }
   :where(button) { transition: none !important; }
-  :where(button):active { scale: 1 !important; }
+  :where(button):active, :where(button):hover { scale: 1 !important; }
   .animate-capture,
   .ff-1, .ff-2, .ff-3, .ff-4, .ff-5, .ff-6,
   .ff-7, .ff-8, .ff-9, .ff-10, .ff-11, .ff-12 {

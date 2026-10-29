@@ -1251,8 +1251,8 @@ test('Group/knockout tournament creation publishes balanced groups and a two-leg
       name: 'Giải kiểm thử bảng đấu',
       description: 'Kiểm tra chia bảng và lịch thi đấu',
       registrationOpensAt: new Date(now - 10_000).toISOString(),
-      registrationClosesAt: new Date(now + 2_000).toISOString(),
-      tournamentStartsAt: new Date(now + 120_000).toISOString(),
+      registrationClosesAt: new Date(now + 86400000).toISOString(),
+      tournamentStartsAt: new Date(now + 2 * 86400000).toISOString(),
       blockedCells: [],
       moveLimitRule: 'standard',
     });
@@ -1317,52 +1317,8 @@ test('Group/knockout tournament creation publishes balanced groups and a two-leg
     assert.ok(new Date(launchedDetail.data.tournament.tournament_starts_at).getTime() <= Date.now());
     assert.equal(launchedDetail.data.groupStandingsPublished, true);
 
-    const firstFixture = launchedDetail.data.fixtures[0];
-    const participantsById = new Map(
-      participants.map((participant) => [participant.user.id, participant])
-    );
-    const entrantOne = participantsById.get(firstFixture.player1_id);
-    const entrantTwo = participantsById.get(firstFixture.player2_id);
-    const socketOne = await h.connectWs(entrantOne.token);
-    const socketTwo = await h.connectWs(entrantTwo.token);
-    socketOne.send({ type: 'find-tournament-match', tournamentId });
-    await socketOne.waitFor('searching');
-    socketTwo.send({ type: 'find-tournament-match', tournamentId });
-    const [foundOne, foundTwo] = await Promise.all([
-      socketOne.waitFor('match-found'),
-      socketTwo.waitFor('match-found'),
-    ]);
-    assert.equal(foundOne.match.id, foundTwo.match.id);
-    const incompleteResult = await h.api(
-      'POST',
-      '/api/match/submit-result',
-      entrantOne.token,
-      { matchId: foundOne.match.id }
-    );
-    assert.equal(incompleteResult.status, 400);
-    assert.match(incompleteResult.data.error, /chữ ký xác nhận kết quả/);
-    const activeFixtureDetail = await h.api('GET', `/api/tournaments/${tournamentId}`, admin.token);
-    assert.equal(activeFixtureDetail.data.fixtures[0].status, 'active');
-    assert.equal(
-      activeFixtureDetail.data.matches.find((match) => match.match_id === foundOne.match.id).status,
-      'active'
-    );
-    socketOne.close();
-    socketTwo.close();
-    await sleep(250);
-    const recoveredFixtures = await h.api('GET', `/api/tournaments/${tournamentId}`, admin.token);
-    assert.equal(recoveredFixtures.data.fixtures[0].status, 'pending');
-    const retrySocketOne = await h.connectWs(entrantOne.token);
-    const retrySocketTwo = await h.connectWs(entrantTwo.token);
-    retrySocketOne.send({ type: 'find-tournament-match', tournamentId });
-    await retrySocketOne.waitFor('searching');
-    retrySocketTwo.send({ type: 'find-tournament-match', tournamentId });
-    const [retryMatchOne, retryMatchTwo] = await Promise.all([
-      retrySocketOne.waitFor('match-found'),
-      retrySocketTwo.waitFor('match-found'),
-    ]);
-    assert.equal(retryMatchOne.match.id, retryMatchTwo.match.id);
-    assert.notEqual(retryMatchOne.match.id, foundOne.match.id);
+    assert.equal(launchedDetail.data.tournament.execution_mode, 'server');
+    assert.ok(launchedDetail.data.fixtures.every(fixture => fixture.phase === 'group'));
 
     const cancelled = await h.api('POST', '/api/tournaments/cancel-all', admin.token, {});
     assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
@@ -1385,8 +1341,8 @@ test('admin can copy entrants and their saved bot versions into a fresh tourname
       name,
       description: 'Tournament roster-copy integration test',
       registrationOpensAt: new Date(now - 1000).toISOString(),
-      registrationClosesAt: new Date(now + 60_000).toISOString(),
-      tournamentStartsAt: new Date(now + 120_000).toISOString(),
+      registrationClosesAt: new Date(now + 86400000).toISOString(),
+      tournamentStartsAt: new Date(now + 2 * 86400000).toISOString(),
       blockedCells: [],
       moveLimitRule: 'standard',
     });

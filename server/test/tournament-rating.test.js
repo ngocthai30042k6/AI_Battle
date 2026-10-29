@@ -16,7 +16,7 @@ test('only standalone ranked bot games affect Elo; all tournament formats use Đ
   for(const fields of [{tournament_id:'cup'},{tournament_phase:'group'},{tournament_phase:'knockout'},{tournament_id:'legacy',tournament_phase:'ranked'}]) {
     const game={...ranked,...fields};
     assert.equal(isEloRatedMatch(game),false);
-    assert.equal(getMatchFormatLabel(game),'Đấu Giải');
+    assert.equal(getMatchFormatLabel(game),game.tournament_phase === 'group' ? 'Đấu Giải (Vòng bảng)' : game.tournament_phase === 'knockout' ? 'Đấu Giải (Knock-Out)' : 'Đấu Giải');
     assert.equal(getMatchEloLabel(game,'p1'),null);
   }
   assert.equal(isEloRatedMatch({...ranked,is_sparring:true}),false);

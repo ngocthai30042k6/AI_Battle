@@ -1,3 +1,5 @@
+import { MIN_TOURNAMENT_GAP_MS, PREPARATION_GAP_ERROR, REGISTRATION_GAP_ERROR } from '../../shared/tournamentScheduleRules.mjs';
+
 export function localDateTimeValue(date: Date) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
@@ -12,8 +14,7 @@ export function parseLocalDateTime(value: string): Date | null {
 export function addScheduleTime(value: string, days = 0, minutes = 0) {
   const date = parseLocalDateTime(value);
   if (!date) return '';
-  date.setDate(date.getDate() + days);
-  date.setMinutes(date.getMinutes() + minutes);
+  date.setTime(date.getTime() + days * MIN_TOURNAMENT_GAP_MS + minutes * 60000);
   return localDateTimeValue(date);
 }
 
@@ -21,8 +22,8 @@ export function scheduleErrors(opens: string, closes: string, starts: string) {
   const opening = parseLocalDateTime(opens), closing = parseLocalDateTime(closes), starting = parseLocalDateTime(starts);
   return {
     opens: opening ? '' : 'Chọn đầy đủ ngày và giờ mở đăng ký.',
-    closes: !closing ? 'Chọn đầy đủ ngày và giờ đóng đăng ký.' : opening && closing <= opening ? 'Giờ đóng phải sau giờ mở đăng ký.' : '',
-    starts: !starting ? 'Chọn đầy đủ ngày và giờ bắt đầu giải.' : closing && starting <= closing ? 'Giải phải bắt đầu sau khi đóng đăng ký.' : '',
+    closes: !closing ? 'Chọn đầy đủ ngày và giờ đóng đăng ký.' : opening && closing.getTime() - opening.getTime() < MIN_TOURNAMENT_GAP_MS ? REGISTRATION_GAP_ERROR : '',
+    starts: !starting ? 'Chọn đầy đủ ngày và giờ bắt đầu giải.' : closing && starting.getTime() - closing.getTime() < MIN_TOURNAMENT_GAP_MS ? PREPARATION_GAP_ERROR : '',
   };
 }
 

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { getKnockoutNotices, getPublicKnockoutMatches, getReplayForViewer } from '../src/knockout-public.js';
+import { getTournamentMatchLog, matchLogFilters } from '../src/tournament-match-log.js';
 
 test('Postgres: public knockout games, private replays and qualification notices use real schema', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout:90000,
@@ -45,6 +46,16 @@ test('Postgres: public knockout games, private replays and qualification notices
     assert.equal(await getReplayForViewer(pool,games[2],undefined),null);
     assert.equal(await getReplayForViewer(pool,games[3],eliminated),null);
     assert.ok(await getReplayForViewer(pool,games[2],users[0]));
+    await pool.query(`INSERT INTO matches(id,seed,player1_id,player2_id,status,tournament_id,tournament_fixture_id,tournament_phase,created_at)
+      SELECT gen_random_uuid(),1,$1,$2,'completed',$3,$4,'group','2030-01-01T00:00:00.123456Z'::timestamptz FROM generate_series(1,60)`,[users[0],users[1],tid,group]);
+    const page1=await getTournamentMatchLog(pool,tid,users[0],matchLogFilters(new URLSearchParams('phase=group')),false);
+    const page2=await getTournamentMatchLog(pool,tid,users[0],matchLogFilters(new URLSearchParams({phase:'group',cursor:page1.nextCursor})),false);
+    assert.equal(page1.total,61);assert.equal(page1.matches.length,50);assert.equal(page2.matches.length,11);
+    assert.equal(new Set([...page1.matches,...page2.matches].map(m=>m.id)).size,61);
+    assert.equal(page2.nextCursor,null);
+    assert.equal((await getTournamentMatchLog(pool,tid,eliminated,matchLogFilters(new URLSearchParams()),false)).total,0);
+    await assert.rejects(()=>getTournamentMatchLog(pool,tid,users[0],matchLogFilters(new URLSearchParams('scope=all')),false),error=>error.status===403);
+    assert.equal((await getTournamentMatchLog(pool,tid,users[0],matchLogFilters(new URLSearchParams('phase=knockout')),false)).total,2);
     assert.deepEqual((await getKnockoutNotices(pool,users[1])).map(n=>n.id),[tid]);
     assert.deepEqual(await getKnockoutNotices(pool,eliminated),[]);
     await pool.query("UPDATE tournaments SET status='completed' WHERE id=$1",[tid]);

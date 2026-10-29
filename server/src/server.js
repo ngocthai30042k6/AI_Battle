@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { createToken, hashPassword, verifyPassword, verifyToken } from './auth.js';
 import { calculateElo } from './elo.js';
 import { isEloRatedMatch, ELO_RATED_MATCH_SQL } from '../../shared/matchRating.mjs';
+import { requireTournamentScheduleGaps } from '../../shared/tournamentScheduleRules.mjs';
 import { enqueueOrMatch, cancelQueue, enqueueTournamentOrMatch, cancelTournamentQueue } from './matchmaker.js';
 import { hashCanonical, verifyConsensusDispute, verifyReplay, verifySessionProof } from './replay.js';
 import { createReplayStorage } from './storage.js';
@@ -23,6 +24,7 @@ import { areBothMatchPlayersOffline } from './match-disconnect.js';
 import { prepareServerKnockout, startServerKnockout, completeServerKnockoutGame } from './knockout-series.js';
 import { persistMatchRelay } from './match-relay.js';
 import { getKnockoutNotices, getPublicKnockoutMatches, getReplayForViewer } from './knockout-public.js';
+import { getTournamentMatchLog, matchLogFilters } from './tournament-match-log.js';
 import { registerMatchSessionKey } from './session-key.js';
 import { updateGroupEntryScore } from './group-entry-score.js';
 import { minimumTournamentElo, requireTournamentElo } from './tournament-eligibility.js';
@@ -1893,6 +1895,10 @@ const httpServer = createServer(async (req, res) => {
     if (req.method === 'GET' && /^\/api\/tournaments\/[0-9a-f-]+\/knockout-matches$/i.test(url.pathname)) {
       return json(res, 200, { matches: await getPublicKnockoutMatches(pool, url.pathname.split('/')[3], replayStorage.enabled) });
     }
+    if (req.method === 'GET' && /^\/api\/tournaments\/[0-9a-f-]+\/match-log$/i.test(url.pathname)) {
+      const auth = authFromHeader(req);
+      return json(res,200,await getTournamentMatchLog(pool,url.pathname.split('/')[3],auth.sub,matchLogFilters(url.searchParams),replayStorage.enabled));
+    }
     if (req.method === 'GET' && url.pathname === '/api/tournaments') {
       await updateTournamentLifecycle();
       const result = await pool.query(
@@ -2083,6 +2089,7 @@ const httpServer = createServer(async (req, res) => {
       } catch (error) {
         return json(res, 400, { error: error.message });
       }
+      requireTournamentScheduleGaps(registrationOpensAt, registrationClosesAt, tournamentStartsAt);
       const status = registrationOpensAt.getTime() > Date.now() ? 'scheduled' : 'registration';
       const created = await pool.query(
         `INSERT INTO tournaments(

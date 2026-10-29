@@ -20,7 +20,9 @@ import { knockoutConfiguration, knockoutStartTime, newKnockoutSeries, recordKnoc
 import { minimumTournamentElo, requireTournamentElo } from './server/src/tournament-eligibility.js';
 import { playServerBotMatch } from './server/src/server-bot-match.js';
 import { qualifiedForKnockout } from './server/src/knockout-public.js';
+import { matchLogFilters, matchLogPage, MATCH_LOG_PAGE_SIZE } from './server/src/tournament-match-log.js';
 import { isEloRatedMatch } from './shared/matchRating.mjs';
+import { requireTournamentScheduleGaps } from './shared/tournamentScheduleRules.mjs';
 import {
   TOURNAMENT_RANKS,
   applySprintRankReset,
@@ -1781,6 +1783,27 @@ export async function startServer(options: ServerStartOptions = {}) {
     } catch (err: any) { res.status(err.status || 500).json({ error: err.message }); }
   });
 
+  app.get('/api/tournaments/:id/match-log', (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req), filters = matchLogFilters(new URL(req.originalUrl,'http://localhost').searchParams);
+      if (filters.scope === 'all' && !user.is_admin) {res.status(403).json({error:'Chỉ quản trị viên được xem toàn bộ nhật ký giải.'});return;}
+      const tournament = db.tournaments.find(t=>t.id===req.params.id && t.format==='group_knockout' && t.status!=='cancelled');
+      const rows = tournament ? db.matches.filter(m=>m.tournament_id===tournament.id && m.status==='completed' &&
+        (filters.scope==='all' || [m.player1_id,m.player2_id].includes(user.id))).map(m=>{
+          const fixture=db.tournamentFixtures.find(f=>f.id===m.tournament_fixture_id && f.tournament_id===m.tournament_id);
+          return {id:m.id,match_id:m.id,status:m.status,tournament_phase:m.tournament_phase,
+            phase:fixture?.phase || m.tournament_phase,group_number:fixture?.group_number,round_number:fixture?.round_number,leg:fixture?.leg,
+            player1_id:m.player1_id,player2_id:m.player2_id,winner_id:m.winner_id,
+            player1:db.users.find(u=>u.id===m.player1_id)?.display_name || 'Đấu thủ',player2:db.users.find(u=>u.id===m.player2_id)?.display_name || 'Đấu thủ',
+            winner:db.users.find(u=>u.id===m.winner_id)?.display_name,move_count:m.final_step_count,
+            created_at:m.created_at,completed_at:m.completed_at,replay_available:Boolean(m.replay_json)};
+        }).filter(m=>m.phase===filters.phase && [m.player1,m.player2,m.winner,m.id].join(' ').toLocaleLowerCase('vi').includes(filters.search.toLocaleLowerCase('vi')))
+        .sort((a,b)=>b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)) : [];
+      const page=rows.filter(m=>!filters.cursor || m.created_at<filters.cursor.at || (m.created_at===filters.cursor.at && m.id<filters.cursor.id));
+      res.json(matchLogPage(page.slice(0,MATCH_LOG_PAGE_SIZE+1),rows.length));
+    } catch (err: any) {res.status(err.status || 500).json({error:err.message});}
+  });
+
   app.get('/api/tournaments/:id/knockout-matches', (req: Request, res: Response) => {
     const tournament = db.tournaments.find(t => t.id === req.params.id && t.format === 'group_knockout' && t.status !== 'cancelled');
     const matches = tournament ? db.matches.filter(m => m.tournament_id === tournament.id).flatMap(m => {
@@ -2004,6 +2027,7 @@ export async function startServer(options: ServerStartOptions = {}) {
         });
         return;
       }
+      requireTournamentScheduleGaps(registrationOpensAt, registrationClosesAt, tournamentStartsAt);
       let rules;
       try {
         rules = buildTournamentRules(
