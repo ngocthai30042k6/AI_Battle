@@ -25,6 +25,7 @@ import { BotRunner } from '../core/botRunner';
 import { SAMPLE_BOT_LABELS, SAMPLE_BOTS, type SampleBotKey } from '../core/sampleBots';
 import { soundFx } from '../core/soundFx';
 import { Board9x9 } from '../components/Board9x9';
+import { PythonBotDocs, PYTHON_BOT_DOCS_TITLE } from '../components/PythonBotDocs';
 import { MascotCountsInline } from '../components/HalloweenPieces';
 import { useToast } from '../components/ToastProvider';
 import type { BackendUser } from '../core/backendClient';
@@ -343,10 +344,160 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
     <div className="space-y-6">
       {/* Split 50/50 Lab Workspace */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
-        {/* LEFT COLUMN: 9x9 Sandbox Simulator */}
+        {/* LEFT COLUMN: Python 3 Code Editor & Bot API Docs */}
+        <div className="xl:col-span-6 p-5 sm:p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Terminal className="w-5 h-5 text-[var(--accent-primary)]" />
+                Trình Soạn Thảo Bot Python 3
+              </h2>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5 tabular-nums">
+                Chạy cô lập trong Web Worker Pyodide ·{' '}
+                {savedBotVersion > 0
+                  ? `Đang lưu bản v${savedBotVersion} trên tài khoản`
+                  : 'Chưa lưu lên tài khoản'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  const key = e.target.value as SampleBotKey;
+                  if (!key) return;
+                  onEditorCodeChange(SAMPLE_BOTS[key]);
+                  setSyntaxStatus(null);
+                  notify(`Đã nạp mẫu "${SAMPLE_BOT_LABELS[key].name}" vào trình soạn thảo.`, 'info');
+                  e.target.value = '';
+                }}
+                aria-label="Nạp mẫu thuật toán Python"
+                className="px-3 py-2 text-xs rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
+              >
+                <option value="" disabled>
+                  Nạp Bot mẫu…
+                </option>
+                {(Object.keys(SAMPLE_BOT_LABELS) as SampleBotKey[]).map((k) => (
+                  <option key={k} value={k}>
+                    {SAMPLE_BOT_LABELS[k].name} ({SAMPLE_BOT_LABELS[k].difficulty})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Code Editor Textarea */}
+          <div className="relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[#09080f]">
+            <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/[0.06] text-[11px] font-mono text-[var(--text-muted)]">
+              <span>bot.py · def get_next_move(my_player_id, game_state)</span>
+              <span>{editorCode.split('\n').length} dòng</span>
+            </div>
+            <textarea
+              value={editorCode}
+              onChange={(e) => {
+                onEditorCodeChange(e.target.value);
+                if (syntaxStatus) setSyntaxStatus(null);
+              }}
+              onKeyDown={handleTextareaKeyDown}
+              spellCheck={false}
+              rows={20}
+              aria-label="Mã nguồn Python 3 của Bot"
+              className="code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px]"
+            />
+          </div>
+
+          {/* Syntax feedback */}
+          {syntaxStatus && (
+            <div
+              className={`p-3 rounded-xl border text-xs ${
+                syntaxStatus.ok
+                  ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-300'
+                  : 'border-red-500/35 bg-red-950/25 text-red-300'
+              }`}
+            >
+              {syntaxStatus.msg}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              disabled={checkingSyntax}
+              onClick={handleCheckSyntax}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border border-[var(--border-subtle)] bg-[var(--bg-canvas)] text-[var(--text-primary)] hover:border-[var(--accent-primary)] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              {checkingSyntax ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              )}
+              Kiểm tra cú pháp Python
+            </button>
+
+            <button
+              type="button"
+              disabled={savingServer}
+              onClick={handleSaveServer}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              {savingServer ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CloudUpload className="w-4 h-4" />
+              )}
+              {user ? 'Lưu Bot lên Tài khoản' : 'Đăng nhập để Lưu Bot'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setWorkspaceLayer('docs')}
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
+          >
+            <span className="inline-flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-[var(--accent-primary)]" />
+              {PYTHON_BOT_DOCS_TITLE}
+            </span>
+            <span className="text-[var(--accent-primary)]">Mở tài liệu →</span>
+          </button>
+
+          {/* Compact Move & TLE Log */}
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-3">
+            <div className="mb-2 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+              <span className="font-semibold text-[var(--text-primary)]">Nhật ký thực thi & thời gian phản hồi</span>
+              <span className="font-mono tabular-nums">{logs.length} nước</span>
+            </div>
+            <div className="h-28 space-y-1 overflow-y-auto pr-1 font-mono text-xs tabular-nums">
+              {logs.length === 0 ? (
+                <div className="py-6 text-center text-[var(--text-muted)]">
+                  Bấm "Chạy thử" hoặc "1 Bước" để kiểm tra tốc độ phản hồi của thuật toán.
+                </div>
+              ) : (
+                logs.slice(-30).map((item, i) => (
+                  <div
+                    key={`${item.step}-${i}`}
+                    className={`flex items-center justify-between rounded px-2 py-1 ${
+                      item.isError ? 'bg-red-500/15 text-red-300' : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <span>
+                      #{String(item.step).padStart(2, '0')} {item.text}
+                    </span>
+                    {item.elapsedMs !== undefined && (
+                      <span className="text-[var(--text-muted)]">{item.elapsedMs}ms</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: 9x9 Sandbox Simulator */}
         <div className="xl:col-span-6 p-5 sm:p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
           {workspaceLayer ? (
-            <div className="flex h-full flex-col">
+            <div className="flex h-full max-h-[900px] min-h-0 flex-col">
               <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
                 <div className="flex items-center gap-2">
                   <button
@@ -358,7 +509,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                   <h2 className="text-base font-bold text-[var(--text-primary)]">
-                    {workspaceLayer === 'board' ? 'Điều chỉnh bàn đấu' : 'Tài liệu Bot Python'}
+                    {workspaceLayer === 'board' ? 'Điều chỉnh bàn đấu' : PYTHON_BOT_DOCS_TITLE}
                   </h2>
                 </div>
                 <button
@@ -448,32 +599,8 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-xs text-[var(--text-secondary)]">
-                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-3">
-                    <p>
-                      Hàm bắt buộc:{' '}
-                      <code className="text-[var(--text-primary)]">
-                        def get_next_move(my_player_id, game_state):
-                      </code>
-                    </p>
-                    <ul className="mt-2 list-disc space-y-1.5 pl-4">
-                      <li>
-                        <code className="text-[var(--text-primary)]">game_state['validMoves']</code>: các nước hợp lệ, gồm <code>fromRow, fromCol, toRow, toCol, from, to, isAttack, pieceType, targetType</code>.
-                      </li>
-                      <li>
-                        <code className="text-[var(--text-primary)]">game_state['myPieces']</code> và <code className="text-[var(--text-primary)]">game_state['opponentPieces']</code>: tọa độ quân còn trên bàn, gồm <code>row, col, index, type</code>.
-                      </li>
-                      <li>
-                        <code className="text-[var(--text-primary)]">game_state['opponentPieceCounts']</code>: số quân từng hệ của đối thủ. Loại bỏ hết một hệ quân sẽ thắng ngay.
-                      </li>
-                      <li>
-                        <code className="text-[var(--text-primary)]">game_state['blockedCells']</code>: chỉ số các ô chướng ngại trên bàn.
-                      </li>
-                      <li>
-                        Trả về dictionary theo tọa độ <code>{'{"fromRow": r1, "fromCol": c1, "toRow": r2, "toCol": c2}'}</code> hoặc chỉ số ô <code>{'{"from": idx1, "to": idx2}'}</code>.
-                      </li>
-                    </ul>
-                  </div>
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                  <PythonBotDocs />
                 </div>
               )}
             </div>
@@ -714,156 +841,6 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
 
           </div>
           )}
-        </div>
-
-        {/* RIGHT COLUMN: Python 3 Code Editor & Bot API Docs */}
-        <div className="xl:col-span-6 p-5 sm:p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Terminal className="w-5 h-5 text-[var(--accent-primary)]" />
-                Trình Soạn Thảo Bot Python 3
-              </h2>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5 tabular-nums">
-                Chạy cô lập trong Web Worker Pyodide ·{' '}
-                {savedBotVersion > 0
-                  ? `Đang lưu bản v${savedBotVersion} trên tài khoản`
-                  : 'Chưa lưu lên tài khoản'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  const key = e.target.value as SampleBotKey;
-                  if (!key) return;
-                  onEditorCodeChange(SAMPLE_BOTS[key]);
-                  setSyntaxStatus(null);
-                  notify(`Đã nạp mẫu "${SAMPLE_BOT_LABELS[key].name}" vào trình soạn thảo.`, 'info');
-                  e.target.value = '';
-                }}
-                aria-label="Nạp mẫu thuật toán Python"
-                className="px-3 py-2 text-xs rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
-              >
-                <option value="" disabled>
-                  Nạp Bot mẫu…
-                </option>
-                {(Object.keys(SAMPLE_BOT_LABELS) as SampleBotKey[]).map((k) => (
-                  <option key={k} value={k}>
-                    {SAMPLE_BOT_LABELS[k].name} ({SAMPLE_BOT_LABELS[k].difficulty})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Code Editor Textarea */}
-          <div className="relative rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[#09080f]">
-            <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/[0.06] text-[11px] font-mono text-[var(--text-muted)]">
-              <span>bot.py · def get_next_move(my_player_id, game_state)</span>
-              <span>{editorCode.split('\n').length} dòng</span>
-            </div>
-            <textarea
-              value={editorCode}
-              onChange={(e) => {
-                onEditorCodeChange(e.target.value);
-                if (syntaxStatus) setSyntaxStatus(null);
-              }}
-              onKeyDown={handleTextareaKeyDown}
-              spellCheck={false}
-              rows={20}
-              aria-label="Mã nguồn Python 3 của Bot"
-              className="code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px]"
-            />
-          </div>
-
-          {/* Syntax feedback */}
-          {syntaxStatus && (
-            <div
-              className={`p-3 rounded-xl border text-xs ${
-                syntaxStatus.ok
-                  ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-300'
-                  : 'border-red-500/35 bg-red-950/25 text-red-300'
-              }`}
-            >
-              {syntaxStatus.msg}
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              disabled={checkingSyntax}
-              onClick={handleCheckSyntax}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border border-[var(--border-subtle)] bg-[var(--bg-canvas)] text-[var(--text-primary)] hover:border-[var(--accent-primary)] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              {checkingSyntax ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              )}
-              Kiểm tra cú pháp Python
-            </button>
-
-            <button
-              type="button"
-              disabled={savingServer}
-              onClick={handleSaveServer}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              {savingServer ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CloudUpload className="w-4 h-4" />
-              )}
-              {user ? 'Lưu Bot lên Tài khoản' : 'Đăng nhập để Lưu Bot'}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setWorkspaceLayer('docs')}
-            className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
-          >
-            <span className="inline-flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-[var(--accent-primary)]" />
-              Tài liệu cấu trúc game_state cho Python Bot
-            </span>
-            <span className="text-[var(--accent-primary)]">Mở tài liệu →</span>
-          </button>
-
-          {/* Compact Move & TLE Log */}
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-3">
-            <div className="mb-2 flex items-center justify-between text-xs text-[var(--text-secondary)]">
-              <span className="font-semibold text-[var(--text-primary)]">Nhật ký thực thi & thời gian phản hồi</span>
-              <span className="font-mono tabular-nums">{logs.length} nước</span>
-            </div>
-            <div className="h-28 space-y-1 overflow-y-auto pr-1 font-mono text-xs tabular-nums">
-              {logs.length === 0 ? (
-                <div className="py-6 text-center text-[var(--text-muted)]">
-                  Bấm "Chạy thử" hoặc "1 Bước" để kiểm tra tốc độ phản hồi của thuật toán.
-                </div>
-              ) : (
-                logs.slice(-30).map((item, i) => (
-                  <div
-                    key={`${item.step}-${i}`}
-                    className={`flex items-center justify-between rounded px-2 py-1 ${
-                      item.isError ? 'bg-red-500/15 text-red-300' : 'text-[var(--text-secondary)]'
-                    }`}
-                  >
-                    <span>
-                      #{String(item.step).padStart(2, '0')} {item.text}
-                    </span>
-                    {item.elapsedMs !== undefined && (
-                      <span className="text-[var(--text-muted)]">{item.elapsedMs}ms</span>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       </div>
       {showTournamentRules && (
