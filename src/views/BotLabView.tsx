@@ -74,7 +74,10 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
   const [seed, setSeed] = useState<number>(20261031);
   const [delayMs, setDelayMs] = useState<number>(300);
   const [tleMs, setTleMs] = useState<number>(500);
-  const [workspaceLayer, setWorkspaceLayer] = useState<'board' | 'docs' | null>(null);
+  const [workspaceLayer, setWorkspaceLayer] = useState<'board' | null>(null);
+  const [showDocs, setShowDocs] = useState(false);
+  const docsTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeDocs = () => { setShowDocs(false); docsTriggerRef.current?.focus(); };
   const [showTournamentRules, setShowTournamentRules] = useState(false);
   const [boardDraft, setBoardDraft] = useState<number[]>([]);
 
@@ -402,8 +405,32 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
               spellCheck={false}
               rows={20}
               aria-label="Mã nguồn Python 3 của Bot"
-              className="code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px]"
+              aria-hidden={showDocs}
+              tabIndex={showDocs ? -1 : 0}
+              className={`code-editor w-full p-4 bg-transparent text-xs sm:text-[13px] leading-relaxed text-emerald-100 focus:outline-none resize-y min-h-[380px] ${showDocs ? 'invisible' : ''}`}
             />
+            {showDocs && (
+              <section
+                role="region"
+                aria-labelledby="editor-python-docs-title"
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeDocs(); } }}
+                className="absolute inset-0 z-10 flex min-h-0 flex-col bg-[#09080f]"
+              >
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3.5 py-2">
+                  <h3 id="editor-python-docs-title" className="text-xs font-semibold text-[var(--text-primary)]">
+                    {PYTHON_BOT_DOCS_TITLE}
+                  </h3>
+                  <button type="button" autoFocus onClick={closeDocs}
+                    aria-label="Đóng tài liệu, quay lại soạn code"
+                    className="shrink-0 rounded-lg p-1.5 text-[var(--text-secondary)] hover:bg-white/10">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+                  <PythonBotDocs />
+                </div>
+              </section>
+            )}
           </div>
 
           {/* Syntax feedback */}
@@ -452,7 +479,10 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setWorkspaceLayer('docs')}
+            ref={docsTriggerRef}
+            onClick={() => setShowDocs(true)}
+            aria-expanded={showDocs}
+            aria-controls={showDocs ? 'editor-python-docs-title' : undefined}
             className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent-primary)] transition-colors"
           >
             <span className="inline-flex items-center gap-2">
@@ -509,7 +539,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                   <h2 className="text-base font-bold text-[var(--text-primary)]">
-                    {workspaceLayer === 'board' ? 'Điều chỉnh bàn đấu' : PYTHON_BOT_DOCS_TITLE}
+                    Điều chỉnh bàn đấu
                   </h2>
                 </div>
                 <button
@@ -522,7 +552,7 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                 </button>
               </div>
 
-              {workspaceLayer === 'board' ? (
+              {(
                 <div className="flex min-h-0 flex-1 flex-col">
                   <p className="mb-3 text-xs text-[var(--text-secondary)]">
                     Chọn ô để thêm hoặc bỏ chướng ngại. Mỗi thay đổi được áp dụng đối xứng qua đường chéo chính; hai ô đích không thể bị chặn.
@@ -597,10 +627,6 @@ export const BotLabView: React.FC<BotLabViewProps> = ({
                       Áp dụng bàn đấu
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <PythonBotDocs />
                 </div>
               )}
             </div>
