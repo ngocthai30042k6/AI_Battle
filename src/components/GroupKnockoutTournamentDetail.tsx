@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, Search, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bot, CheckCircle2, Loader2, Play, Search, Settings2, ShieldX, Sparkles, Swords, Trophy, UsersRound, X } from 'lucide-react';
 import { backendClient, type BackendUser, type TournamentItem } from '../core/backendClient';
 import { KnockoutSetup } from './KnockoutSetup';
+import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
 import { useToast } from './ToastProvider';
@@ -88,6 +89,8 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
   const [groupCount, setGroupCount] = useState(8);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showKnockoutSetup, setShowKnockoutSetup] = useState(false);
+  const [eligibilityMinimum, setEligibilityMinimum] = useState<number | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [activeTournamentTab, setActiveTournamentTab] = useState<'groups' | 'knockout'>('groups');
   const [resultsFor, setResultsFor] = useState<'all' | 'mine'>('all');
@@ -181,8 +184,10 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
       await action();
       await Promise.all([onRefresh(), onRefreshDetail()]);
       notify(successMessage, 'success');
+      return true;
     } catch (error: any) {
       notify(error.message || 'Không thể thực hiện thao tác.', 'error');
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -238,6 +243,8 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
       onOpenAuth();
       return;
     }
+    const minimum = Number(tournament.min_elo || 0);
+    if (user.elo < minimum) { setEligibilityMinimum(minimum); return; }
     await perform(
       () => backendClient.registerTournament(tournament.id),
       'Đã đăng ký tham gia giải.'
@@ -267,6 +274,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
 
   return (
     <div className="space-y-5">
+      {eligibilityMinimum !== null && <TournamentEligibilityDialog minimum={eligibilityMinimum} elo={user?.elo} onClose={() => setEligibilityMinimum(null)} />}
       {Number(tournament.min_elo || 0) > 0 && <p className="text-xs text-[var(--text-secondary)]">Điều kiện đăng ký: Elo từ {tournament.min_elo} trở lên.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
@@ -291,12 +299,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
           {tournament.status === 'registration' && !ownEntry && (
             <button
               type="button"
-              disabled={submitting || Boolean(user && user.elo < Number(tournament.min_elo || 0))}
+              disabled={submitting}
               onClick={register}
               className="rounded-xl bg-[var(--accent-primary)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
-              {user && user.elo < Number(tournament.min_elo || 0)
-                ? `Cần ít nhất ${tournament.min_elo} Elo` : user ? 'Đăng ký tham gia' : 'Đăng nhập để đăng ký'}
+              {user ? 'Đăng ký tham gia' : 'Đăng nhập để đăng ký'}
             </button>
           )}
         </div>
@@ -533,8 +540,18 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         </section>
       )}
 
-      {user?.isAdmin && (tournament.status === 'group_complete' || (tournament.status === 'knockout' && !tournament.knockout_starts_at && !tournament.knockout_started_at)) && (
-        <KnockoutSetup key={tournament.id} groups={groups} rules={tournament.rules_json} submitting={submitting}
+      {user?.isAdmin && (tournament.status === 'group_complete' || (tournament.status === 'knockout' && !tournament.knockout_started_at && knockoutFixtures.every((f: any) => f.status === 'pending' && !f.games_played && Number(f.leg) === 1))) && (
+        <div className="flex justify-end">
+          <button type="button" disabled={submitting} onClick={() => setShowKnockoutSetup(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-accent)] bg-[var(--bg-panel)] px-4 py-2.5 text-sm font-semibold text-[var(--accent-primary)]">
+            <Settings2 className="h-4 w-4" />Điều chỉnh vòng Knock Out
+          </button>
+        </div>
+      )}
+      {showKnockoutSetup && user?.isAdmin && (
+        <KnockoutSetup key={tournament.id} groups={groups} rules={tournament.knockout_rules_json || tournament.rules_json}
+          fixtures={knockoutFixtures} startsAt={tournament.knockout_starts_at} submitting={submitting}
+          onClose={() => setShowKnockoutSetup(false)}
           onStart={settings => perform(
             () => backendClient.prepareTournamentKnockout(tournament.id, settings),
             'Đã công bố nhánh, luật và giờ knock-out. Người chơi có thể cập nhật Bot trước khi khởi chạy.'

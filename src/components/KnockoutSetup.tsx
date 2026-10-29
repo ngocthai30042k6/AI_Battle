@@ -1,25 +1,38 @@
-import React, { useMemo, useState } from 'react';
-import { Swords } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Swords, X } from 'lucide-react';
 import { TournamentCustomization, type TournamentCustomizationValue } from './TournamentCustomization';
 
 export type KnockoutSetupPayload = TournamentCustomizationValue & { pairings: string[][]; knockoutStartsAt: string };
 
-export function KnockoutSetup({ groups, rules, submitting, onStart }: {
+export function KnockoutSetup({ groups, rules, fixtures = [], startsAt: scheduledStart, submitting, onStart, onClose }: {
   groups: any[];
   rules: any;
+  fixtures?: any[];
+  startsAt?: string;
   submitting: boolean;
-  onStart: (payload: KnockoutSetupPayload) => void;
+  onStart: (payload: KnockoutSetupPayload) => Promise<boolean>;
+  onClose: () => void;
 }) {
+  const closeRef = useRef(onClose), submittingRef = useRef(submitting);
+  closeRef.current = onClose; submittingRef.current = submitting;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !submittingRef.current) closeRef.current(); };
+    window.addEventListener('keydown', escape);
+    return () => { window.removeEventListener('keydown', escape); previous?.focus(); };
+  }, []);
   const qualifiers = useMemo(() => groups.flatMap(group => (group.standings || []).slice(0, 2)), [groups]);
   const [settings, setSettings] = useState<TournamentCustomizationValue>({
     blockedCells: rules?.blockedCells || [], moveLimitRule: rules?.moveLimitRule || 'standard',
     capturedPieceValues: rules?.capturedPieceValues || { rock: 1, paper: 2, scissors: 3 },
   });
   const [startsAt, setStartsAt] = useState(() => {
-    const date = new Date(Date.now() + 60 * 60000);
+    const date = scheduledStart ? new Date(scheduledStart) : new Date(Date.now() + 60 * 60000);
     return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
   const [seats, setSeats] = useState<string[]>(() => {
+    if (fixtures.length) return [...fixtures].sort((a,b) => a.match_number-b.match_number).flatMap(f => [f.player1_id,f.player2_id]);
     const pairs: string[] = [];
     for (let i = 0; i < groups.length; i += 2) {
       const a = groups[i].standings || [], b = groups[i + 1]?.standings || [];
@@ -36,10 +49,17 @@ export function KnockoutSetup({ groups, rules, submitting, onStart }: {
       return updated;
     });
   }
-  return (
-    <section className="space-y-4 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm sm:items-center"
+      onClick={event => { if (event.target === event.currentTarget && !submitting) onClose(); }}>
+    <section role="dialog" aria-modal="true" aria-labelledby="knockout-setup-heading"
+      className="my-auto w-full max-w-4xl space-y-5 rounded-2xl border border-[var(--border-accent)] bg-[#150e23] p-5 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+        <h2 id="knockout-setup-heading" className="text-xl font-bold">Điều chỉnh vòng Knock Out</h2>
+        <button type="button" autoFocus disabled={submitting} onClick={onClose} aria-label="Đóng điều chỉnh Knock Out"
+          className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-white/10"><X className="h-5 w-5" /></button>
+      </div>
       <div>
-        <h3 className="font-bold">Vòng bảng đã kết thúc · Thiết lập Knock-out BO3</h3>
         <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">
           Thắng 1 điểm, hòa 0,5 điểm. Tối đa 3 ván chính; thắng hai ván đầu dừng ở 2–0.
           Bằng điểm sau 3 ván thì đấu ván phụ đến khi phân thắng bại. Ván đầu chọn người đi trước ngẫu nhiên;
@@ -79,12 +99,15 @@ export function KnockoutSetup({ groups, rules, submitting, onStart }: {
         </details>
         <div className="flex justify-end">
           <button type="button" disabled={submitting || !seats.length || seats.length !== qualifiers.length || !startsAt}
-            onClick={() => onStart({ ...settings, knockoutStartsAt: new Date(startsAt).toISOString(), pairings: Array.from({ length: seats.length / 2 }, (_, i) => seats.slice(i * 2, i * 2 + 2)) })}
+            onClick={async () => {
+              if (await onStart({ ...settings, knockoutStartsAt: new Date(startsAt).toISOString(), pairings: Array.from({ length: seats.length / 2 }, (_, i) => seats.slice(i * 2, i * 2 + 2)) })) onClose();
+            }}
             className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
             <Swords className="h-4 w-4" />{submitting ? 'Đang phân nhánh…' : 'Phân nhánh và công bố Knock-out BO3'}
           </button>
         </div>
       </fieldset>
     </section>
+    </div>, document.body
   );
 }

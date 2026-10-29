@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Calendar, Loader2, Plus } from 'lucide-react';
 import { TournamentCreationModal, type TournamentCreatePayload } from '../components/TournamentCreationModal';
+import { TournamentEligibilityDialog } from '../components/TournamentEligibilityDialog';
 import { GroupKnockoutTournamentDetail } from '../components/GroupKnockoutTournamentDetail';
 import { OTTGameEngine } from '../core/ottEngine';
 import {
@@ -61,6 +62,7 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
   const detailRequest = useRef(0);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [rulesPreviewTournament, setRulesPreviewTournament] = useState<TournamentItem | null>(null);
+  const [eligibilityMinimum, setEligibilityMinimum] = useState<number | null>(null);
 
   // Create Tournament Form State (Admin / BTC)
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -130,6 +132,11 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
       onOpenAuth('login');
       return;
     }
+    const minimum = Number(tournaments.find(t => t.id === tournamentId)?.min_elo || 0);
+    if (user.elo < minimum) {
+      setEligibilityMinimum(minimum);
+      return;
+    }
     setSubmittingAction(true);
     try {
       await backendClient.registerTournament(tournamentId);
@@ -143,7 +150,8 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
         'success'
       );
     } catch (err: any) {
-      notify(err.message || 'Không thể đăng ký giải đấu.', 'error');
+      if (minimum > 0 && /elo/i.test(err.message || '')) setEligibilityMinimum(minimum);
+      else notify(err.message || 'Không thể đăng ký giải đấu.', 'error');
     } finally {
       setSubmittingAction(false);
     }
@@ -203,6 +211,7 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {eligibilityMinimum !== null && <TournamentEligibilityDialog minimum={eligibilityMinimum} elo={user?.elo} onClose={() => setEligibilityMinimum(null)} />}
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
@@ -294,6 +303,7 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed line-clamp-3">
                     {t.description}
                   </p>
+                  {Number(t.min_elo || 0) > 0 && <p className="text-sm text-[var(--text-secondary)]">Điều kiện đăng ký: Elo từ {t.min_elo} trở lên.</p>}
                 </div>
 
                 <div className="pt-4 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-muted)] tabular-nums">
