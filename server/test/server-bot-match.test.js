@@ -12,7 +12,7 @@ test('repeated two-player sandboxes stay within the free server memory budget', 
     const sample = () => { peak = Math.max(peak, process.memoryUsage().rss); };
     const timer = setInterval(sample, 10);
     try {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 40; i++) {
         const [first,second] = await Promise.all([
           createPythonBot('def get_next_move(p,s): return None'),
           createPythonBot('def get_next_move(p,s): return None'),
@@ -45,6 +45,33 @@ def get_next_move(player, state):
     assert.equal((await bot.move(1, { validMoves: [{ from: 1, to: 2 }] })).counter, 1);
     assert.equal((await bot.move(2, { validMoves: [{ from: 2, to: 3 }] })).counter, 2);
   } finally { await bot.close(); }
+});
+
+test('reused worker threads start fresh Python memory, modules and filesystems for each game', async () => {
+  const poisoned = await createPythonBot(`import builtins,sys,os
+builtins.previous_bot = 'private'
+sys.modules['previous_bot_module'] = sys
+os.environ['PREVIOUS_BOT'] = 'private'
+open('/previous-bot.txt','w').write('private')
+counter = 0
+def get_next_move(p,s):
+ global counter
+ counter += 1
+ return {'counter':counter}
+`);
+  assert.equal((await poisoned.move(1,{})).counter,1);
+  await poisoned.close();
+  const fresh = await createPythonBot(`import builtins,sys,os
+counter = 0
+def get_next_move(p,s):
+ global counter
+ counter += 1
+ return {'counter':counter,'leaked':hasattr(builtins,'previous_bot') or 'previous_bot_module' in sys.modules or 'PREVIOUS_BOT' in os.environ or os.path.exists('/previous-bot.txt')}
+`);
+  try {
+    assert.deepEqual(await fresh.move(1,{}),{counter:1,leaked:false});
+    assert.deepEqual(await fresh.move(1,{}),{counter:2,leaked:false});
+  } finally {await fresh.close();}
 });
 
 test('infinite Python loops time out without blocking the server', async () => {

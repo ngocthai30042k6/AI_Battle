@@ -3,7 +3,7 @@ import { WASI, WASIContext } from '@runno/wasi';
 
 // Share compiled code between players, with separate memories and filesystems.
 // The default worker's data URLs create several large binary copies per player.
-parentPort.once('message', async ({ module, stdinBuffer, ...context }) => {
+parentPort.on('message', async ({ module, stdinBuffer, ...context }) => {
   try {
     const wasi = new WASI(new WASIContext({
       ...context,

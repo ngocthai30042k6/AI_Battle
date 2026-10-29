@@ -129,6 +129,7 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, p
       }
       await client.query('COMMIT');
       onMetric({ phase:fixture.phase,claimMs:Math.round(claimedAt-startedAt),playMs:Math.round(playedAt-claimedAt),
+        botLoadMs:result.timings?.loadMs || 0,botMovesMs:result.timings?.movesMs || 0,botCloseMs:result.timings?.closeMs || 0,
         saveMs:Math.round(performance.now()-playedAt),totalMs:Math.round(performance.now()-startedAt) });
       } while (running && !stopping && !connectionError);
     } catch (error) {

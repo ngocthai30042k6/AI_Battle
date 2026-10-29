@@ -1,4 +1,4 @@
-import { Worker } from 'node:worker_threads';
+import { acquirePythonWorker, discardPythonWorker, releasePythonWorker } from './python-worker-pool.js';
 import { readFile } from 'node:fs/promises';
 import { fetchWASIFS } from '@runno/sandbox';
 
@@ -41,11 +41,8 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
   const module = await compiledPython;
   const stdin = new SharedArrayBuffer(128 * 1024);
   const view = new DataView(stdin);
-  const worker = new Worker(new URL('./python-worker.js', import.meta.url), {
-    resourceLimits: { maxOldGenerationSizeMb: 128, stackSizeMb: 4 },
-    execArgv: [],
-  });
-  let pending, buffer = '', closed = false;
+  const worker = acquirePythonWorker();
+  let pending, buffer = '', closed = false, closePromise, finishClose;
   const fail = (error) => {
     if (pending) { clearTimeout(pending.timer); pending.reject(error); pending = null; }
   };
@@ -53,16 +50,16 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
     pending = { resolve, reject, timer: setTimeout(() => {
       fail(new Error('Bot exceeded its time limit'));
       closed = true;
-      void worker.terminate();
+      void discardPythonWorker(worker);
     }, ms) };
   });
-  worker.on('error', error => { closed = true; fail(error); });
-  worker.on('exit', () => { closed = true; fail(new Error('Bot sandbox stopped')); });
-  worker.on('message', message => {
+  const onError = error => { closed = true; fail(error); if(finishClose) finishClose(false); };
+  const onExit = () => onError(new Error('Bot sandbox stopped'));
+  const onMessage = message => {
     if (message.type === 'stdout') {
       buffer += message.text;
       if (buffer.length > 65536) {
-        fail(new Error('Bot output exceeded its limit')); closed = true; void worker.terminate(); return;
+        fail(new Error('Bot output exceeded its limit')); closed = true; void discardPythonWorker(worker); return;
       }
       let end;
       while ((end = buffer.indexOf('\n')) >= 0) {
@@ -75,9 +72,12 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
         } catch { fail(new Error('Bot returned invalid JSON')); }
       }
     } else if (message.type === 'crash' || message.type === 'result') {
-      closed = true; fail(new Error('Bot sandbox exited')); void worker.terminate();
+      if (finishClose) { finishClose(message.type === 'result'); return; }
+      closed = true; fail(new Error('Bot sandbox exited')); void discardPythonWorker(worker);
     }
-  });
+  };
+  const detach = () => { worker.removeListener('error',onError); worker.removeListener('exit',onExit); worker.removeListener('message',onMessage); };
+  worker.on('error',onError); worker.on('exit',onExit); worker.on('message',onMessage);
   const file = content => ({ path: '', content, mode: 'string', timestamps: {
     access: new Date(), change: new Date(), modification: new Date(),
   } });
@@ -86,7 +86,7 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
     stdinBuffer: stdin, args: ['python', '-u', '/runner.py'], env: {},
     fs: { ...files, '/runner.py': file(wrapper), '/submission.py': file(code) },
   });
-  try { await ready; } catch (error) { closed = true; await worker.terminate(); throw error; }
+  try { await ready; } catch (error) { closed = true; detach(); await discardPythonWorker(worker); throw error; }
   return {
     async move(player, state) {
       if (closed) throw new Error('Bot sandbox is closed');
@@ -98,6 +98,20 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
       Atomics.notify(new Int32Array(stdin), 0);
       return (await response).move;
     },
-    async close() { closed = true; fail(new Error('Bot sandbox closed')); await worker.terminate(); },
+    async close() {
+      if(closePromise) return closePromise;
+      if(closed) { detach(); await discardPythonWorker(worker); return; }
+      closed = true; fail(new Error('Bot sandbox closed'));
+      closePromise=new Promise(resolve=>{
+        const timer=setTimeout(()=>finishClose?.(false),1000);
+        finishClose=reusable=>{
+          finishClose=null; clearTimeout(timer); detach();
+          void (reusable ? releasePythonWorker(worker) : discardPythonWorker(worker)).then(resolve);
+        };
+        // EOF lets this Python interpreter exit before the thread is reused.
+        view.setInt32(0,-1); Atomics.notify(new Int32Array(stdin),0);
+      });
+      return closePromise;
+    },
   };
 }

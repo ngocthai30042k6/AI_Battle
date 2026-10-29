@@ -51,7 +51,8 @@ const tournamentRunner = createTournamentRunner({ pool, completeFixture: complet
     if (runnerSamples.length < 20) return;
     const mean = key => Math.round(runnerSamples.reduce((sum,item) => sum+item[key],0)/runnerSamples.length);
     console.log('Tournament runner timing:', JSON.stringify({ games:runnerSamples.length,
-      claimMs:mean('claimMs'),playMs:mean('playMs'),saveMs:mean('saveMs'),totalMs:mean('totalMs'),rssMB:Math.round(process.memoryUsage().rss/1048576) }));
+      claimMs:mean('claimMs'),playMs:mean('playMs'),saveMs:mean('saveMs'),totalMs:mean('totalMs'),
+      botLoadMs:mean('botLoadMs'),botMovesMs:mean('botMovesMs'),botCloseMs:mean('botCloseMs'),rssMB:Math.round(process.memoryUsage().rss/1048576) }));
     runnerSamples.length = 0;
   } });
 const liveSockets = new Map();
