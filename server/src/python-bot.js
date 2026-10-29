@@ -115,7 +115,7 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
           finishClose=null; clearTimeout(timer); detach();
           void (reusable ? releasePythonWorker(worker) : discardPythonWorker(worker)).then(resolve);
         };
-        // EOF lets this Python interpreter exit before the thread is reused.
+        // Stop the disposable VM before returning its Node thread to the pool.
         view.setInt32(0,-1); Atomics.notify(new Int32Array(stdin),0);
       });
       return closePromise;

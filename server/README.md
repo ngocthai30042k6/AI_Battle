@@ -5,8 +5,15 @@
 After publishing groups, the organizer presses **Khởi chạy vòng bảng**. Every entrant must
 have a saved Python bot. The server snapshots that code and runs the scheduled double
 round robin: each pair plays twice, with `player1` (the first mover) swapped in the return leg.
-Players can close their browsers. Results, Elo, group points and replays are stored in
+Players can close their browsers. Results, group points and full replays are stored in
 PostgreSQL; the group stage becomes complete after the last fixture finishes.
+Tournament games do not change account Elo.
+
+Organizers can **Tạm dừng / Tiếp tục** either the group stage or a started knock-out
+stage. Pausing finishes and saves the in-flight game before taking any new game.
+The pause persists across reloads and server restarts; resuming uses the remaining
+fixtures and the same locked bot submissions. BO3 scores and first-mover order survive
+the pause. The admin-only endpoints are `POST /api/tournaments/:id/pause` and `/resume`.
 
 Python runs in a Runno WebAssembly/WASI virtual filesystem without host filesystem or
 network access. Bot initialization has a 15-second limit and each move has a 2-second
@@ -17,9 +24,19 @@ launch do not affect that tournament. A database session lock prevents duplicate
 an interrupted fixture is replayed from the beginning after a restart, without applying
 partial results. Points are ordered descending, then move differential descending.
 
+The runner keeps its database session lock while draining the queue, uses an indexed
+pending-fixture lookup, and commits group results in one SQL statement. Two Node worker
+threads are reused, but each bot still starts a fresh WASM instance, Python interpreter,
+memory and virtual filesystem. Completed VMs are discarded without running Python
+shutdown hooks. No bot state crosses games. Every 20 games the server logs average claim,
+Python startup/move/close, save and total times, plus RSS. `npm run benchmark:server -- 12`
+from the repository root measures local sandbox/game time only; use production timing
+logs for actual throughput, which depends on CPU allocation and bot complexity.
+
 This requires Node 22+ and installed dependencies in `server/`. Free hosting can suspend
 the process while idle; queued work resumes when the service is awake. Continuous
-unattended tournaments require an always-on host. Knock-out browser play is unchanged.
+unattended tournaments require an always-on host. Published knock-out BO3 brackets use
+the same server runner after the organizer launches the round.
 
 This service adds account authentication, Redis Elo matchmaking, WebSocket signaling relay, PostgreSQL match ledger, signed result verification, Elo updates, and replay storage. The clients still send game traffic directly over a WebRTC DataChannel after signaling completes.
 

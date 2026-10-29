@@ -5,7 +5,8 @@ import { promisify } from 'node:util';
 import { createPythonBot } from '../src/python-bot.js';
 import { playServerBotMatch } from '../src/server-bot-match.js';
 
-test('repeated two-player sandboxes stay within the free server memory budget', { timeout: 30000 }, async () => {
+// This asserts bounded memory, not desktop CPU speed; allow slower CI/laptops.
+test('repeated two-player sandboxes stay within the free server memory budget', { timeout: 90000 }, async () => {
   const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
     import { createPythonBot } from ${JSON.stringify(new URL('../src/python-bot.js', import.meta.url).href)};
     let peak = 0;
@@ -22,7 +23,7 @@ test('repeated two-player sandboxes stay within the free server memory budget', 
       }
     } finally { clearInterval(timer); }
     console.log(peak);
-  `], { timeout: 25000 });
+  `], { timeout: 80000 });
   // Leave at least 112 MB of the 512 MB instance for HTTP, Redis and Postgres.
   assert.ok(Number(stdout.trim()) < 400 * 1024 * 1024, `Sandbox peak RSS: ${stdout.trim()} bytes`);
 });
