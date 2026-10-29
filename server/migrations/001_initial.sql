@@ -123,9 +123,9 @@ ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS current_week INTEGER NOT NULL D
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS week_started_at TIMESTAMPTZ;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS rules_json JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'ranked_weekly';
-UPDATE tournaments SET format='ranked_weekly' WHERE format IS NULL OR format <> 'ranked_weekly';
+UPDATE tournaments SET format='ranked_weekly' WHERE format IS NULL;
 ALTER TABLE tournaments DROP CONSTRAINT IF EXISTS tournaments_format_check;
-ALTER TABLE tournaments ADD CONSTRAINT tournaments_format_check CHECK (format IN ('ranked_weekly'));
+ALTER TABLE tournaments ADD CONSTRAINT tournaments_format_check CHECK (format IN ('ranked_weekly', 'group_knockout'));
 ALTER TABLE tournaments DROP COLUMN IF EXISTS min_matches;
 ALTER TABLE tournaments DROP COLUMN IF EXISTS max_qualifiers;
 ALTER TABLE tournaments DROP COLUMN IF EXISTS division;

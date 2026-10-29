@@ -3,7 +3,7 @@ UPDATE matches SET tournament_phase='ranked'
 WHERE tournament_id IS NOT NULL AND tournament_phase IS NULL;
 ALTER TABLE matches DROP CONSTRAINT IF EXISTS matches_tournament_phase_check;
 ALTER TABLE matches ADD CONSTRAINT matches_tournament_phase_check
-  CHECK (tournament_phase IS NULL OR tournament_phase IN ('practice', 'ranked'));
+  CHECK (tournament_phase IS NULL OR tournament_phase IN ('practice', 'ranked', 'group', 'knockout'));
 
 ALTER TABLE tournament_entries DROP CONSTRAINT IF EXISTS tournament_entries_rank_stars_check;
 ALTER TABLE tournament_entries ADD CONSTRAINT tournament_entries_rank_stars_check

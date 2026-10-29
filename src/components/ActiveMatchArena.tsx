@@ -56,7 +56,7 @@ export interface ActiveMatchSession {
   player2Elo?: number;
   rules: BoardRules | null;
   tournamentId?: string | null;
-  tournamentPhase?: 'practice' | 'ranked' | null;
+  tournamentPhase?: 'practice' | 'ranked' | 'group' | 'knockout' | null;
   isSparring?: boolean;
   lockedBotCode?: string | null;
   lockedBotVersion?: number;
@@ -105,14 +105,6 @@ interface TechnicalResolution {
   reasonCode: string;
   message: string;
 }
-
-const TIER_VIET: Record<string, string> = {
-  Bronze: 'Đồng',
-  Silver: 'Bạc',
-  Gold: 'Vàng',
-  Master: 'Cao Thủ',
-  Challenger: 'Thách Đấu',
-};
 
 function describeDrawReason(reason?: DrawReason | null): string {
   if (reason === 'threefold-repetition') return 'Hòa cờ do lặp lại thế cờ 3 lần';
@@ -1525,9 +1517,9 @@ export const ActiveMatchArena: React.FC<ActiveMatchArenaProps> = ({
                 {session.mySeat === null
                   ? 'Chế độ Khán giả Trực tiếp'
                   : session.tournamentId
-                  ? session.tournamentPhase === 'practice'
-                    ? 'Giải Đấu · Vòng Chạy Đà (Bot tự động)'
-                    : 'Giải Đấu · Vòng Thực Chiến (Bot tự động)'
+                  ? session.tournamentPhase === 'knockout'
+                    ? 'Giải Đấu · Vòng Knock-out (Bot tự động)'
+                    : 'Giải Đấu · Vòng Bảng (Bot tự động)'
                   : session.mode === 'bot'
                   ? 'Đấu Trường Bot vs Bot'
                   : 'Đối Kháng Trực Tiếp 1v1'}
@@ -1723,27 +1715,7 @@ export const ActiveMatchArena: React.FC<ActiveMatchArenaProps> = ({
                         {resultSummary.eloAfter - resultSummary.eloBefore})
                       </>
                     )}
-                  {resultSummary?.tournamentUpdate && (
-                    <>
-                      {' · '}
-                      {resultSummary.tournamentUpdate.phase === 'practice' ? (
-                        <span>Vòng Chạy Đà (0 Sao · 0 Elo)</span>
-                      ) : (
-                        <span>
-                          Hạng giải:{' '}
-                          <strong className="text-[var(--text-primary)]">
-                            {TIER_VIET[resultSummary.tournamentUpdate.tier] ||
-                              resultSummary.tournamentUpdate.tier}
-                          </strong>{' '}
-                          (
-                          {resultSummary.tournamentUpdate.tier === 'Challenger'
-                            ? `${resultSummary.tournamentUpdate.seasonPoints} điểm Thách Đấu`
-                            : `${resultSummary.tournamentUpdate.stars} Sao`}
-                          )
-                        </span>
-                      )}
-                    </>
-                  )}
+
                 </div>
                 {session.tournamentId && (
                   <p className="text-xs text-[var(--text-muted)]">

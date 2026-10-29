@@ -61,7 +61,7 @@ export interface MatchSummary {
   seed: number;
   status: string;
   match_type?: 'human' | 'bot';
-  tournament_phase?: 'practice' | 'ranked' | null;
+  tournament_phase?: 'practice' | 'ranked' | 'group' | 'knockout' | null;
   is_sparring?: boolean;
   winner_id: string | null;
   final_state_hash?: string | null;

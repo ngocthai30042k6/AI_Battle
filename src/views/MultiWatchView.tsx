@@ -340,7 +340,7 @@ export const MultiWatchView: React.FC<MultiWatchViewProps> = ({ themeMode }) => 
             Trung Tâm Quan Sát 4 Trận Đấu Cùng Lúc (Multi-Arena 2×2)
           </h2>
           <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            Đã tách riêng khỏi màn hình thi đấu 1v1 giúp bàn cờ chính thoáng rộng. Bạn có thể nhập mã phòng P2P vào từng ô hoặc theo dõi 4 thế trận AI trên 4 bản đồ Sprint.
+            Bạn có thể nhập mã phòng P2P vào từng ô hoặc theo dõi đồng thời 4 thế trận AI.
           </p>
         </div>
         {focusedSlotId !== null && (

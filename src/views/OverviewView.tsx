@@ -331,7 +331,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {openTournaments.length}
           </div>
           <div className="mt-1 text-xs text-[var(--text-muted)]">
-            Đua hạng cá nhân theo Sprint tuần
+            Thi đấu vòng bảng và knock-out
           </div>
         </div>
       </section>
@@ -389,9 +389,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       </h4>
                       <div className="text-xs text-[var(--text-secondary)] tabular-nums">
                         <span>
-                          {t.status === 'qualifying'
-                            ? `Thực chiến · Sprint ${t.current_week || 1}`
-                            : 'Mở đăng ký & Vòng chạy đà'}
+                          {{ scheduled: 'Sắp mở đăng ký', registration: 'Đang mở đăng ký',
+                            grouping: 'Chờ chia bảng', group_stage: 'Đã chia bảng',
+                            group_running: 'Vòng bảng đang diễn ra', group_complete: 'Vòng bảng đã kết thúc',
+                            knockout: 'Vòng knock-out', completed: 'Đã kết thúc', cancelled: 'Đã hủy',
+                            qualifying: 'Đang thi đấu' }[t.status] || t.status}
                         </span>
                         <span aria-hidden="true"> · </span>
                         <span>
