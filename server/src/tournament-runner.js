@@ -42,7 +42,6 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, f
       client = await pool.connect();
       ownsLock = (await client.query("SELECT pg_try_advisory_lock(80261029, 1) AS locked")).rows[0].locked;
       if (!ownsLock) return;
-      await preparePythonRuntime();
       await client.query('BEGIN');
       // No other server runner can be active while this session owns the lock.
       await client.query(`UPDATE tournament_fixtures f SET status='pending',match_id=NULL
@@ -63,6 +62,7 @@ export function createTournamentRunner({ pool, completeFixture, updateEntries, f
         ORDER BY f.round_number,f.match_number,f.leg LIMIT 1 FOR UPDATE OF f,t`);
       fixture = next.rows[0];
       if (!fixture) { await client.query('COMMIT'); return; }
+      await preparePythonRuntime();
       if (!fixture.code1 || !fixture.code2) throw new Error('Missing locked bot code');
       const id = randomUUID(), seed = randomInt(1, 0x7fffffff);
       match = (await client.query(`INSERT INTO matches(id,seed,player1_id,player2_id,status,match_type,

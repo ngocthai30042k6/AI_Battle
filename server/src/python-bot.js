@@ -1,8 +1,10 @@
 import { Worker } from 'node:worker_threads';
+import { readFile } from 'node:fs/promises';
 import { fetchWASIFS } from '@runno/sandbox';
 
 const runtime = new URL('./langs/', import.meta.resolve('@runno/sandbox'));
 let baseFiles;
+let compiledPython;
 const wrapper = `import json, sys, io, contextlib
 class Quiet:
     def write(self, text): return len(text)
@@ -35,9 +37,11 @@ export async function preparePythonRuntime() {
 
 export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutMs = 15000 } = {}) {
   const files = await preparePythonRuntime();
+  compiledPython ||= readFile(new URL('python-3.11.3.wasm', runtime)).then(bytes => WebAssembly.compile(bytes));
+  const module = await compiledPython;
   const stdin = new SharedArrayBuffer(128 * 1024);
   const view = new DataView(stdin);
-  const worker = new Worker(new URL(import.meta.resolve('@runno/sandbox/worker')), {
+  const worker = new Worker(new URL('./python-worker.js', import.meta.url), {
     resourceLimits: { maxOldGenerationSizeMb: 128, stackSizeMb: 4 },
     execArgv: [],
   });
@@ -78,7 +82,7 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
     access: new Date(), change: new Date(), modification: new Date(),
   } });
   const ready = wait(bootTimeoutMs);
-  worker.postMessage({ type: 'start', binaryURL: new URL('python-3.11.3.wasm', runtime).href,
+  worker.postMessage({ type: 'start', module,
     stdinBuffer: stdin, args: ['python', '-u', '/runner.py'], env: {},
     fs: { ...files, '/runner.py': file(wrapper), '/submission.py': file(code) },
   });

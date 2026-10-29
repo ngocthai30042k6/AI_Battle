@@ -1,7 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createPythonBot } from '../src/python-bot.js';
 import { playServerBotMatch } from '../src/server-bot-match.js';
+
+test('repeated two-player sandboxes stay within the free server memory budget', { timeout: 30000 }, async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+    import { createPythonBot } from ${JSON.stringify(new URL('../src/python-bot.js', import.meta.url).href)};
+    let peak = 0;
+    const sample = () => { peak = Math.max(peak, process.memoryUsage().rss); };
+    const timer = setInterval(sample, 10);
+    try {
+      for (let i = 0; i < 6; i++) {
+        const first = await createPythonBot('def get_next_move(p,s): return None');
+        const second = await createPythonBot('def get_next_move(p,s): return None');
+        try { sample(); await first.move(1, {}); await second.move(2, {}); }
+        finally { await first.close(); await second.close(); }
+      }
+    } finally { clearInterval(timer); }
+    console.log(peak);
+  `], { timeout: 25000 });
+  // Leave at least 112 MB of the 512 MB instance for HTTP, Redis and Postgres.
+  assert.ok(Number(stdout.trim()) < 400 * 1024 * 1024, `Sandbox peak RSS: ${stdout.trim()} bytes`);
+});
 
 test('Python bot retains state, receives legal moves and cannot access host files', async () => {
   const bot = await createPythonBot(`counter=0
