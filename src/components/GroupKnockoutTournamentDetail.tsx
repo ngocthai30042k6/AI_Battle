@@ -647,30 +647,35 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                 Trận: số trận đã đấu · T/H/B: thắng/hòa/bại · Thắng 3 điểm, hòa 1 điểm.
                 {' '}Hệ số = tổng số nước trận thua − tổng số nước trận thắng; thấp hơn được ưu tiên khi bằng điểm.
               </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-2 sm:gap-3">
                 {groups.map((group: any) => {
                   const rows = detail?.groupStandingsPublished ? group.standings : group.members;
                   return (
                     <div
                       key={group.group_number}
-                      className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
+                      className="min-w-0 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
                     >
                       <h4 className="border-b border-[var(--border-subtle)] px-2.5 py-2 text-xs font-bold sm:px-3">
                         Bảng {group.group_number}
                       </h4>
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[310px] table-fixed text-[10px] tabular-nums">
+                      <div>
+                        <table className="w-full table-fixed text-[10px] tabular-nums">
                           <caption className="sr-only">Điểm và thống kê đấu thủ Bảng {group.group_number}</caption>
+                          <colgroup>
+                            {[5, 35, 10, 7, 7, 7, 14, 15].map((width, index) => (
+                              <col key={index} style={{ width: `${width}%` }} />
+                            ))}
+                          </colgroup>
                           <thead className="bg-[var(--bg-canvas)] text-[var(--text-muted)]">
                             <tr className="border-b border-[var(--border-subtle)]">
-                              <th scope="col" className="w-6 py-2 text-center">#</th>
+                              <th scope="col" className="py-2 text-center">#</th>
                               <th scope="col" className="py-2 text-left">Đấu thủ</th>
-                              <th scope="col" className="w-8 py-2 text-center">Trận</th>
-                              <th scope="col" title="Thắng" className="w-6 py-2 text-center">T</th>
-                              <th scope="col" title="Hòa" className="w-6 py-2 text-center">H</th>
-                              <th scope="col" title="Thua (bại)" className="w-6 py-2 text-center">B</th>
-                              <th scope="col" className="w-9 py-2 text-center">Điểm</th>
-                              <th scope="col" title="Hệ số nước đi" className="w-9 py-2 text-center">HS</th>
+                              <th scope="col" className="py-2 text-center">Trận</th>
+                              <th scope="col" title="Thắng" className="py-2 text-center">T</th>
+                              <th scope="col" title="Hòa" className="py-2 text-center">H</th>
+                              <th scope="col" title="Thua (bại)" className="py-2 text-center">B</th>
+                              <th scope="col" className="py-2 text-center">Điểm</th>
+                              <th scope="col" title="Hệ số nước đi" className="py-2 text-center">HS</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -691,7 +696,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                                 <div className="flex min-w-0 items-center gap-1.5">
                                   <TournamentAvatar avatarId={row.avatar_id} avatarUrl={row.avatar_url} name={row.display_name} />
                                   <div className="min-w-0">
-                                    <div title={row.display_name} className="truncate text-[11px] font-semibold leading-4">
+                                    <div className="break-words text-[11px] font-semibold leading-4 [overflow-wrap:anywhere]">
                                       {row.display_name}
                                       {row.player_id === user?.id && (
                                         <span className="ml-1 text-[var(--accent-primary)]">(Bạn)</span>
