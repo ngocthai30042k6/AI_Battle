@@ -12,9 +12,10 @@ test('HTTP: publish rules and time, edit bot twice, admin launches BO3, Elo bloc
   const tid=randomUUID(),registration=randomUUID(),code='def get_next_move(p,s): return None';
   const users=Array.from({length:16},(_,i)=>({id:randomUUID(),email:`ko-${i}@example.invalid`,password_hash:'test',display_name:'KO '+i,elo:i===1?1500:1200,is_admin:i===0,active_bot_version:1,created_at:new Date().toISOString()}));
   const baseTournament={format:'group_knockout',registration_closes_at:new Date(Date.now()+86400000).toISOString(),ends_at:new Date(Date.now()+86400000*2).toISOString(),max_teams:64,rules_json:{blockedCells:[],moveLimitRule:'standard'},rules_schedule:[],current_week:0};
-  fs.writeFileSync(dbPath,JSON.stringify({users,tournaments:[{...baseTournament,id:tid,name:'KO API',status:'group_complete',group_count:8},{...baseTournament,id:registration,name:'Elo API',status:'registration',min_elo:1300}],
+  const legacy=Array.from({length:8},(_,i)=>({id:randomUUID(),tournament_id:tid,phase:'knockout',group_number:null,round_number:1,match_number:i+1,leg:1,series_best_of:1,player1_id:users[i*2].id,player2_id:users[i*2+1].id,status:'pending',match_id:null}));
+  fs.writeFileSync(dbPath,JSON.stringify({users,tournaments:[{...baseTournament,id:tid,name:'KO API',status:'knockout',execution_mode:'server',group_count:8},{...baseTournament,id:registration,name:'Elo API',status:'registration',min_elo:1300}],
     tournamentEntries:users.map((u,i)=>({tournament_id:tid,player_id:u.id,bot_version:1,group_number:Math.floor(i/2)+1,matches_played:0,wins:0,draws:0,losses:0,points:0,registered_at:new Date().toISOString()})),
-    tournamentFixtures:Array.from({length:8},(_,i)=>({id:randomUUID(),tournament_id:tid,phase:'group',group_number:i+1,round_number:1,match_number:1,leg:1,player1_id:users[i*2].id,player2_id:users[i*2+1].id,winner_id:users[i*2].id,status:'completed'})),
+    tournamentFixtures:[...legacy,...Array.from({length:8},(_,i)=>({id:randomUUID(),tournament_id:tid,phase:'group',group_number:i+1,round_number:1,match_number:1,leg:1,player1_id:users[i*2].id,player2_id:users[i*2+1].id,winner_id:users[i*2].id,status:'completed'}))],
     botVersions:users.map(u=>({user_id:u.id,version:1,code,code_sha256:'0'.repeat(64)})),matches:[],matchResults:[],matchDisputes:[]}));
   const server=await startServer({port:0,dbPath,skipVite:true});
   try{
@@ -25,6 +26,9 @@ test('HTTP: publish rules and time, edit bot twice, admin launches BO3, Elo bloc
     assert.equal((await request(`/api/tournaments/${tid}/prepare-knockout`,users[1])).status,403);
     const prepared=await request(`/api/tournaments/${tid}/prepare-knockout`,users[0],{blockedCells:[1,9],moveLimitRule:'remaining-pieces',knockoutStartsAt:new Date(Date.now()-1000).toISOString()});
     assert.equal(prepared.status,201);
+    const configured=JSON.parse(fs.readFileSync(dbPath,'utf8')).tournamentFixtures.filter(f=>f.phase==='knockout');
+    assert.deepEqual(configured.map(f=>f.id).sort(),legacy.map(f=>f.id).sort());
+    assert.ok(configured.every(f=>f.series_best_of===3));
     await new Promise(resolve=>setTimeout(resolve,1100));
     assert.equal(JSON.parse(fs.readFileSync(dbPath,'utf8')).matches.length,0);
     const revised=code+' # saved for knockout';

@@ -2142,8 +2142,10 @@ export async function startServer(options: ServerStartOptions = {}) {
       const groupFixtures = db.tournamentFixtures.filter((item) =>
         item.tournament_id === req.params.id && item.phase === 'group'
       );
+      const existingKnockout = db.tournamentFixtures.filter(f => f.tournament_id === req.params.id && f.phase === 'knockout');
       if (!tournament || tournament.format !== 'group_knockout' ||
-          tournament.status !== 'group_complete' || !groupFixtures.length ||
+          !(tournament.status === 'group_complete' || (tournament.status === 'knockout' && !tournament.knockout_started_at)) || !groupFixtures.length ||
+          existingKnockout.some(f => f.status !== 'pending' || f.games_played || f.match_id || f.round_number !== 1 || f.leg > 1) ||
           groupFixtures.some((fixture) => fixture.status !== 'completed')) {
         res.status(409).json({ error: 'Vòng bảng chưa hoàn tất.' });
         return;
@@ -2155,12 +2157,14 @@ export async function startServer(options: ServerStartOptions = {}) {
       );
       const config = knockoutConfiguration(qualifiers, tournament.rules_json, req.body);
       const openingRound = config.fixtures;
+      if (existingKnockout.length && existingKnockout.length !== openingRound.length) {
+        res.status(409).json({ error: 'Nhánh cũ không khớp số đấu thủ vượt qua vòng bảng.' }); return;
+      }
       tournament.knockout_starts_at = knockoutStartTime(req.body?.knockoutStartsAt).toISOString();
       tournament.knockout_started_at = undefined;
       tournament.knockout_rules_json = config.rules;
       tournament.execution_mode = 'server';
-      db.tournamentFixtures.push(
-        ...openingRound.map((fixture) => createTournamentFixture(tournament.id, {
+      const configuredFixtures = openingRound.map((fixture, i) => ({ ...createTournamentFixture(tournament.id, {
           ...newKnockoutSeries(fixture.player1Id, fixture.player2Id),
           phase: 'knockout',
           group_number: null,
@@ -2170,8 +2174,9 @@ export async function startServer(options: ServerStartOptions = {}) {
           player1_id: fixture.player1Id,
           player2_id: fixture.player2Id,
           status: 'pending',
-        }))
-      );
+        }), ...(existingKnockout[i] ? { id: existingKnockout[i].id } : {}) }));
+      db.tournamentFixtures = db.tournamentFixtures.filter(f => f.tournament_id !== tournament.id || f.phase !== 'knockout');
+      db.tournamentFixtures.push(...configuredFixtures);
       tournament.status = 'knockout';
       saveDb();
       res.status(201).json({ tournament, fixtureCount: openingRound.length });

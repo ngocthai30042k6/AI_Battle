@@ -533,7 +533,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
         </section>
       )}
 
-      {user?.isAdmin && tournament.status === 'group_complete' && (
+      {user?.isAdmin && (tournament.status === 'group_complete' || (tournament.status === 'knockout' && !tournament.knockout_starts_at && !tournament.knockout_started_at)) && (
         <KnockoutSetup key={tournament.id} groups={groups} rules={tournament.rules_json} submitting={submitting}
           onStart={settings => perform(
             () => backendClient.prepareTournamentKnockout(tournament.id, settings),
@@ -541,7 +541,7 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
           )} />
       )}
 
-      {tournament.status === 'knockout' && !tournament.knockout_started_at && tournament.execution_mode === 'server' && (
+      {tournament.status === 'knockout' && tournament.knockout_starts_at && !tournament.knockout_started_at && tournament.execution_mode === 'server' && (
         <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border-accent)] bg-[var(--bg-elevated)] p-5">
           <div>
             <h3 className="font-bold">Chuẩn bị vòng Knock-out BO3</h3>

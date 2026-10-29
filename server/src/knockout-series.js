@@ -53,7 +53,13 @@ export function knockoutStartTime(value) {
 
 export async function prepareServerKnockout(client, tournamentId, body) {
   const tournament = (await client.query("SELECT * FROM tournaments WHERE id=$1 AND format='group_knockout' FOR UPDATE", [tournamentId])).rows[0];
-  if (tournament?.status !== 'group_complete') throw Object.assign(new Error('Vòng bảng chưa hoàn tất.'), { status: 409 });
+  if (tournament?.status !== 'group_complete' && !(tournament?.status === 'knockout' && !tournament.knockout_started_at)) {
+    throw Object.assign(new Error('Vòng bảng chưa hoàn tất hoặc knock-out đã khởi chạy.'), { status: 409 });
+  }
+  const existing = (await client.query("SELECT * FROM tournament_fixtures WHERE tournament_id=$1 AND phase='knockout' ORDER BY match_number FOR UPDATE",[tournamentId])).rows;
+  if (existing.some(f => f.status !== 'pending' || f.games_played || f.match_id || f.round_number !== 1 || f.leg > 1)) {
+    throw Object.assign(new Error('Knock-out đã có trận thi đấu; không thể cấu hình lại.'), { status: 409 });
+  }
   const entrants = (await client.query('SELECT player_id,group_number,registered_at FROM tournament_entries WHERE tournament_id=$1', [tournamentId])).rows;
   const played = (await client.query("SELECT * FROM tournament_fixtures WHERE tournament_id=$1 AND phase='group'", [tournamentId])).rows;
   if (!played.length || played.some(f => f.status !== 'completed')) throw Object.assign(new Error('Vòng bảng chưa hoàn tất.'), { status: 409 });
@@ -61,7 +67,14 @@ export async function prepareServerKnockout(client, tournamentId, body) {
   const qualifiers = standings.filter((row, i) => standings.slice(0, i).filter(r => r.group_number === row.group_number).length < 2);
   const { rules, fixtures } = knockoutConfiguration(qualifiers, tournament.rules_json, body);
   const startsAt = knockoutStartTime(body.knockoutStartsAt);
-  for (const f of fixtures) await insertKnockoutSeries(client, tournamentId, f);
+  if (existing.length && existing.length !== fixtures.length) throw Object.assign(new Error('Nhánh cũ không khớp số đấu thủ vượt qua vòng bảng.'),{status:409});
+  for (const [i,f] of fixtures.entries()) {
+    if (!existing.length) await insertKnockoutSeries(client, tournamentId, f);
+    else await client.query(`UPDATE tournament_fixtures SET player1_id=$2,player2_id=$3,series_best_of=3,
+      player1_score=0,player2_score=0,games_played=0,series_games='[]'::jsonb,
+      next_first_player_id=$4,player1_ready_at=NULL,player2_ready_at=NULL,leg=1 WHERE id=$1`,
+    [existing[i].id,f.player1Id,f.player2Id,newKnockoutSeries(f.player1Id,f.player2Id).next_first_player_id]);
+  }
   await client.query(`UPDATE tournaments SET status='knockout',execution_mode='server',knockout_rules_json=$2::jsonb,
     knockout_starts_at=$3,knockout_started_at=NULL WHERE id=$1`, [tournamentId, JSON.stringify(rules), startsAt]);
   return { fixtureCount: fixtures.length };
@@ -76,7 +89,7 @@ export async function startServerKnockout(client, tournamentId) {
     throw Object.assign(new Error('Chưa đến giờ bắt đầu vòng knock-out; người chơi vẫn có thể cập nhật Bot.'), { status: 409 });
   }
   const fixtures = (await client.query("SELECT * FROM tournament_fixtures WHERE tournament_id=$1 AND phase='knockout' FOR UPDATE", [tournamentId])).rows;
-  if (!fixtures.length || fixtures.some(f => f.status !== 'pending' || f.games_played)) throw Object.assign(new Error('Nhánh knock-out không sẵn sàng.'), { status: 409 });
+  if (!fixtures.length || fixtures.some(f => f.status !== 'pending' || f.games_played || f.series_best_of !== 3)) throw Object.assign(new Error('Nhánh knock-out không sẵn sàng.'), { status: 409 });
   const ids = [...new Set(fixtures.flatMap(f => [f.player1_id,f.player2_id]))];
   const bots = (await client.query(`SELECT u.id,u.active_bot_version,b.code,b.code_sha256 FROM users u
     LEFT JOIN user_bot_versions b ON b.user_id=u.id AND b.version=u.active_bot_version
