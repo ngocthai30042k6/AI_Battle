@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { startServerGroupStage, createTournamentRunner } from '../src/tournament-runner.js';
 import { playServerBotMatch } from '../src/server-bot-match.js';
 import { ELO_RATED_MATCH_SQL } from '../../shared/matchRating.mjs';
+import { completeServerGroupMatch } from '../src/group-match-completion.js';
 
 test('Postgres: snapshot bots, run both seats offline, recover restart and commit results once', {
   skip: !process.env.OTTV2_TEST_DB_URL, timeout: 90000,
@@ -48,7 +49,7 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     await pool.query("UPDATE tournament_fixtures SET status='active',match_id=$2 WHERE id=$1", [fixture1, oldMatch]);
     const played = [];
     const errors = [];
-    runner = createTournamentRunner({ pool, onError: (...args) => errors.push(args),
+    runner = createTournamentRunner({ pool, lockKey:randomInt(2,2147483647), onError: (...args) => errors.push(args),
       play: async game => {
         assert.deepEqual(game.codes, [code, code]);
         played.push(game);
@@ -91,6 +92,32 @@ test('Postgres: snapshot bots, run both seats offline, recover restart and commi
     assert.ok(results.every(m => m.replay_json.moves.length > 0));
     assert.deepEqual((await pool.query('SELECT matches_played,points FROM tournament_entries')).rows,
       [{ matches_played: 2, points: 2 }, { matches_played: 2, points: 2 }]);
+    // Exercise decisive outcomes and prove that a replayed completion cannot
+    // award points twice. This is private test-schema data, not a live game.
+    for (const winner of [1,2,0]) {
+      const f=randomUUID(),m=randomUUID();
+      await pool.query("UPDATE tournaments SET status='group_running' WHERE id=$1",[tournamentId]);
+      await pool.query(`INSERT INTO tournament_fixtures(id,tournament_id,phase,group_number,round_number,match_number,player1_id,player2_id)
+        VALUES($1,$2,'group',1,10,10,$3,$4)`,[f,tournamentId,p1,p2]);
+      await pool.query(`INSERT INTO matches(id,seed,player1_id,player2_id,status,tournament_id,tournament_fixture_id,tournament_phase,execution_mode)
+        VALUES($1,1,$2,$3,'pending',$4,$5,'group','server')`,[m,p1,p2,tournamentId,f]);
+      await pool.query("UPDATE tournament_fixtures SET status='active',match_id=$2 WHERE id=$1",[f,m]);
+      const match=(await pool.query('SELECT * FROM matches WHERE id=$1',[m])).rows[0];
+      const result={winner,moveCount:20,finalHash:'fixture-test',replay:{moves:[],result:{winner}}};
+      const transaction=await pool.connect();
+      try {
+        await transaction.query('BEGIN');
+        await transaction.query('SELECT id FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId]);
+        await completeServerGroupMatch(transaction,match,result);
+        await transaction.query('COMMIT');
+        await transaction.query('BEGIN');
+        await assert.rejects(completeServerGroupMatch(transaction,match,result),/already recorded/);
+        await transaction.query('ROLLBACK');
+      }finally{transaction.release();}
+    }
+    assert.deepEqual((await pool.query('SELECT matches_played,points,wins,losses,draws FROM tournament_entries')).rows,
+      Array.from({length:2},()=>({matches_played:5,points:6,wins:1,losses:1,draws:3})));
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM match_results')).rows[0].n,5);
     // Repeat startup migrations: formats, phases and results must survive.
     for (const file of (await readdir(migrations)).filter(f => f.endsWith('.sql')).sort()) {
       await pool.query(await readFile(new URL(file, migrations), 'utf8'));

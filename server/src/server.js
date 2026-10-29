@@ -43,8 +43,17 @@ redis.on('error', err => console.error('Redis error:', err.message));
 const redisEvents = redis.duplicate();
 const instanceId = randomUUID();
 const replayStorage = createReplayStorage(config);
+const runnerSamples = [];
 const tournamentRunner = createTournamentRunner({ pool, completeFixture: completePostgresTournamentFixture,
-  updateEntries: updateTournamentEntriesForResult });
+  updateEntries: updateTournamentEntriesForResult,
+  onMetric: sample => {
+    runnerSamples.push(sample);
+    if (runnerSamples.length < 20) return;
+    const mean = key => Math.round(runnerSamples.reduce((sum,item) => sum+item[key],0)/runnerSamples.length);
+    console.log('Tournament runner timing:', JSON.stringify({ games:runnerSamples.length,
+      claimMs:mean('claimMs'),playMs:mean('playMs'),saveMs:mean('saveMs'),totalMs:mean('totalMs'),rssMB:Math.round(process.memoryUsage().rss/1048576) }));
+    runnerSamples.length = 0;
+  } });
 const liveSockets = new Map();
 const searchTimers = new Map();
 const sparringSessions = new Map();
@@ -3000,6 +3009,7 @@ async function main() {
   await pool.query(await readFile(new URL('../migrations/016_group_knockout_launch_controls.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/017_server_tournament_runner.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/018_knockout_bo3.sql', import.meta.url), 'utf8'));
+  await pool.query(await readFile(new URL('../migrations/019_tournament_runner_queue.sql', import.meta.url), 'utf8'));
   await updateTournamentLifecycle();
   tournamentLifecycleTimer = setInterval(() => updateTournamentLifecycle().catch(error => {
     console.error('Tournament lifecycle update failed:', error.message);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { createTournamentRunner } from '../src/tournament-runner.js';
@@ -47,7 +47,7 @@ test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advan
       await assert.rejects(startServerKnockout(client,tid), /Chưa đến giờ/);
       await client.query('ROLLBACK');
       const idleErrors=[];
-      const idle=createTournamentRunner({pool,updateEntries:async()=>{},completeFixture:async()=>{},onError:(...e)=>idleErrors.push(e),play:async()=>{throw new Error('Started before admin');}});
+      const idle=createTournamentRunner({pool,lockKey:randomInt(2,2147483647),updateEntries:async()=>{},completeFixture:async()=>{},onError:(...e)=>idleErrors.push(e),play:async()=>{throw new Error('Started before admin');}});
       await idle.tick(); await idle.stop(); assert.deepEqual(idleErrors,[]);
       assert.equal((await client.query('SELECT count(*)::int AS n FROM matches')).rows[0].n,0);
       // A second bot edit after groups but before launch is the code to freeze.
@@ -74,7 +74,7 @@ test('Postgres: custom BO3 bracket, loser starts, restart recovery, draws, advan
     assert.deepEqual(sent.find(e=>e.id===ids[15] && e.data.playerId===ids[0]).data.publicKey,key1);
     await pool.query("UPDATE user_bot_versions SET code='raise RuntimeError()'");
     const played = [],errors = [];
-    const options = { pool, onError:(...args)=>errors.push(args), updateEntries:updateGroupEntryScore,
+    const options = { pool, lockKey:randomInt(2,2147483647), onError:(...args)=>errors.push(args), updateEntries:updateGroupEntryScore,
       play:async game => {
         const match = (await pool.query('SELECT * FROM matches WHERE id=$1',[game.matchId])).rows[0];
         const fixture = (await pool.query('SELECT * FROM tournament_fixtures WHERE id=$1',[match.tournament_fixture_id])).rows[0];
