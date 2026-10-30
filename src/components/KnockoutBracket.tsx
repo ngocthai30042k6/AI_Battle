@@ -82,7 +82,7 @@ export function KnockoutBracket({ fixtures, openingMatches, avatars, userId }: {
               const id = fixture?.[`player${seat}_id`], name = fixture?.[`player${seat}`] || '?';
               const won = Boolean(id && fixture?.winner_id === id), own = Boolean(id && userId === id);
               return <div key={seat} className={`knockout-player ${won ? 'knockout-player-winner' : ''} ${own ? 'knockout-player-own' : ''}`}>
-                <span className="flex min-w-0 flex-1 items-center gap-1.5"><TournamentAvatar {...avatars.get(id)} name={name} /><SingleLineName className="leading-4">{`${name}${own ? ' (Bạn)' : ''}`}</SingleLineName></span>
+                <span className="flex min-w-0 flex-1 items-center gap-1"><TournamentAvatar {...avatars.get(id)} name={name} size="compact" /><SingleLineName className="leading-4">{`${name}${own ? ' (Bạn)' : ''}`}</SingleLineName></span>
                 <strong className="knockout-score">{fixture?.series_best_of === 3 ? Number(fixture[`player${seat}_score`] || 0) : won ? '✓' : '–'}</strong>
               </div>;
             })}

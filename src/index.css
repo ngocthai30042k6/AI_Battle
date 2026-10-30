@@ -268,7 +268,7 @@ input[type='range']:focus-visible {
 .bracket-route-own { color: rgba(251, 146, 60, .8); filter: drop-shadow(0 0 3px rgba(249, 115, 22, .3)); }
 
 .knockout-match {
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(192, 132, 252, .16);
   border-radius: 12px;
   background: linear-gradient(140deg, rgba(43, 29, 62, .58), rgba(20, 14, 32, .98));
@@ -279,11 +279,11 @@ input[type='range']:focus-visible {
 .knockout-match:hover { border-color: rgba(192, 132, 252, .45); box-shadow: 0 6px 22px rgba(139, 92, 246, .12); }
 .knockout-match-mine { border-color: rgba(251, 146, 60, .52); box-shadow: 0 0 18px rgba(249, 115, 22, .06); }
 .knockout-match-live { border-color: rgba(251, 191, 36, .55); }
-.knockout-player { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 5px 4px; border-radius: 6px; color: var(--text-secondary); }
+.knockout-player { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 0; border-radius: 6px; color: var(--text-secondary); }
 .knockout-player + .knockout-player { margin-top: 3px; border-top: 1px solid rgba(255, 255, 255, .045); }
 .knockout-player-winner { background: linear-gradient(90deg, rgba(16, 185, 129, .09), transparent); color: #6ee7b7; font-weight: 800; }
 .knockout-player-own { background: rgba(249, 115, 22, .09); color: #fdba74; font-weight: 800; }
-.knockout-score { flex-shrink: 0; display: inline-flex; min-width: 23px; justify-content: center; padding: 3px; border-radius: 5px; background: rgba(255, 255, 255, .035); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+.knockout-score { flex-shrink: 0; display: inline-flex; min-width: 20px; justify-content: center; padding: 2px; border-radius: 5px; background: rgba(255, 255, 255, .035); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
 .knockout-player-winner .knockout-score { background: rgba(16, 185, 129, .13); }
 
 .knockout-final-card {

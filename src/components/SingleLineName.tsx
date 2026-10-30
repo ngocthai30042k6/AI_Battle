@@ -12,7 +12,8 @@ export function SingleLineName({ children, maxSize = 12, minSize = 8, className 
       if (disposed || !container.current?.clientWidth || !text.current) return;
       text.current.style.fontSize = `${maxSize}px`;
       const naturalWidth = text.current.scrollWidth;
-      const next = Math.max(minSize, Math.min(maxSize, Math.floor(maxSize * container.current.clientWidth / Math.max(1,naturalWidth) * 10) / 10));
+      const availableWidth = Math.max(1,container.current.getBoundingClientRect().width - 2);
+      const next = Math.max(minSize, Math.min(maxSize, Math.floor(maxSize * availableWidth / Math.max(1,naturalWidth) * 10) / 10));
       text.current.style.fontSize = `${next}px`;
       setSize(next);
     };
