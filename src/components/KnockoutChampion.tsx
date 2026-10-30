@@ -2,6 +2,7 @@ import React from 'react';
 import { Crown } from 'lucide-react';
 import { orderedFinalists } from '../core/knockoutPresentation';
 import { TournamentAvatar } from './TournamentAvatar';
+import { SingleLineName } from './SingleLineName';
 
 export function KnockoutChampion({ final, avatars, userId }: {
   final:any; avatars:Map<string,{avatarId?:string;avatarUrl?:string|null}>; userId?:string;
@@ -14,10 +15,10 @@ export function KnockoutChampion({ final, avatars, userId }: {
       <TournamentAvatar {...avatars.get(champion.id)} name={champion.name} size="large" />
       <Crown aria-hidden="true" className="absolute -right-1 -top-2 h-7 w-7 -rotate-12 text-yellow-400 drop-shadow-lg" fill="currentColor" />
     </div>
-    <div>
+    <div className="w-full min-w-0">
       <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.25em] text-amber-200/75">Nhà vô địch</p>
-      <p className="knockout-champion-name break-words text-2xl font-black leading-tight text-yellow-400 [overflow-wrap:anywhere] sm:text-3xl">
-        {champion.name}{champion.id===userId ? ' (Bạn)' : ''}
+      <p data-testid="knockout-champion" className="knockout-champion-name font-black leading-tight text-yellow-400">
+        <SingleLineName maxSize={32} minSize={12}>{`${champion.name}${champion.id===userId ? ' (Bạn)' : ''}`}</SingleLineName>
       </p>
     </div>
   </div>;

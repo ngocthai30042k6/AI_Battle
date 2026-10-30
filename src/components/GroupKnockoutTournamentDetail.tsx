@@ -6,6 +6,7 @@ import { TournamentEligibilityDialog } from './TournamentEligibilityDialog';
 import { KnockoutBattleZone } from './KnockoutBattleZone';
 import { KnockoutFinal } from './KnockoutFinal';
 import { KnockoutChampion } from './KnockoutChampion';
+import { SingleLineName } from './SingleLineName';
 import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { Board9x9 } from './Board9x9';
 import { OTTGameEngine } from '../core/ottEngine';
@@ -809,11 +810,11 @@ export const GroupKnockoutTournamentDetail: React.FC<GroupKnockoutTournamentDeta
                   {knockoutRounds.map(([round, roundFixtures]) => <div key={round} className="space-y-2">
                     <h4 className="text-xs font-bold text-[var(--accent-primary)]">{knockoutRoundLabel(openingMatchCount, round)}</h4>
                     {roundFixtures.map(fixture => <article key={fixture.id} className={`rounded-xl border bg-[var(--bg-canvas)] p-4 ${user && [fixture.player1_id,fixture.player2_id].includes(user.id) ? 'border-orange-400/60' : 'border-[var(--border-subtle)]'}`}>
-                      {round === bracketRoundCount ? <KnockoutFinal final={fixture} userId={user?.id} /> : <>
+                      {round === bracketRoundCount ? <KnockoutFinal final={fixture} userId={user?.id} showChampion={false} /> : <>
                         {[1,2].map(seat => <div key={seat} className="flex items-center justify-between gap-3 py-2 text-sm">
-                          <span className={`flex min-w-0 items-center gap-2 ${fixture[`player${seat}_id`] === user?.id ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : fixture.winner_id === fixture[`player${seat}_id`] ? 'font-bold text-emerald-300' : ''}`}>
+                          <span className={`flex min-w-0 flex-1 items-center gap-2 ${fixture[`player${seat}_id`] === user?.id ? 'rounded bg-orange-500/15 px-1 font-bold text-orange-300' : fixture.winner_id === fixture[`player${seat}_id`] ? 'font-bold text-emerald-300' : ''}`}>
                             <TournamentAvatar {...participantAvatars.get(fixture[`player${seat}_id`])} name={fixture[`player${seat}`]} />
-                            <span className="break-words">{fixture[`player${seat}`]}{fixture[`player${seat}_id`] === user?.id ? ' (Bạn)' : ''}</span>
+                            <SingleLineName maxSize={14}>{`${fixture[`player${seat}`]}${fixture[`player${seat}_id`] === user?.id ? ' (Bạn)' : ''}`}</SingleLineName>
                           </span><strong className="shrink-0 font-mono">{Number(fixture[`player${seat}_score`] || 0)}</strong>
                         </div>)}
                         <p className="mt-2 text-[10px] text-[var(--text-muted)]">{fixture.status === 'completed' ? 'Đã kết thúc' : fixture.status === 'active' ? 'Đang thi đấu' : 'Chờ thi đấu'} · {fixture.series_best_of === 3 ? 'BO3' : 'BO1'}</p>

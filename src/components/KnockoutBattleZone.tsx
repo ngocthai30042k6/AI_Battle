@@ -5,6 +5,7 @@ import { backendClient, PLAYER_AVATARS } from '../core/backendClient';
 import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { KnockoutFinal } from './KnockoutFinal';
 import { ReplayModal } from './ReplayModal';
+import { SingleLineName } from './SingleLineName';
 
 export function KnockoutBattleZone({ tournamentId, tournamentName, fixtures, avatars, userId, themeMode, onClose }: {
   tournamentId: string; tournamentName: string; fixtures: any[];
@@ -54,7 +55,7 @@ export function KnockoutBattleZone({ tournamentId, tournamentName, fixtures, ava
         {PLAYER_AVATARS.find(a => a.id === avatar?.avatarId)?.emoji || '🤖'}
         {avatar?.avatarUrl && <img src={avatar.avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" onError={event => {event.currentTarget.style.display='none';}} />}
       </div>
-      <p className={`break-words text-sm font-bold [overflow-wrap:anywhere] ${id && id === userId ? 'rounded bg-orange-500/15 px-1 text-orange-300' : winner ? 'text-yellow-300' : 'text-[var(--text-primary)]'}`}>{name}{id && id === userId ? ' (Bạn)' : ''}</p>
+      <p className={`font-bold ${id && id === userId ? 'rounded bg-orange-500/15 px-1 text-orange-300' : winner ? 'text-yellow-300' : 'text-[var(--text-primary)]'}`}><SingleLineName maxSize={14}>{`${name}${id && id === userId ? ' (Bạn)' : ''}`}</SingleLineName></p>
     </div>;
   };
   return createPortal(<>

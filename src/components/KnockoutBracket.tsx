@@ -4,6 +4,7 @@ import { knockoutRoundLabel } from '../core/knockoutPresentation';
 import { KnockoutFinal } from './KnockoutFinal';
 import { KnockoutChampion } from './KnockoutChampion';
 import { TournamentAvatar } from './TournamentAvatar';
+import { SingleLineName } from './SingleLineName';
 
 type Connection = { key: string; path: string; own: boolean; complete: boolean; x: number; y: number };
 
@@ -81,7 +82,7 @@ export function KnockoutBracket({ fixtures, openingMatches, avatars, userId }: {
               const id = fixture?.[`player${seat}_id`], name = fixture?.[`player${seat}`] || '?';
               const won = Boolean(id && fixture?.winner_id === id), own = Boolean(id && userId === id);
               return <div key={seat} className={`knockout-player ${won ? 'knockout-player-winner' : ''} ${own ? 'knockout-player-own' : ''}`}>
-                <span className="flex min-w-0 items-center gap-1.5"><TournamentAvatar {...avatars.get(id)} name={name} /><span className="min-w-0 break-words text-xs leading-4 [overflow-wrap:anywhere]">{name}{own ? ' (Bạn)' : ''}</span></span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5"><TournamentAvatar {...avatars.get(id)} name={name} /><SingleLineName className="leading-4">{`${name}${own ? ' (Bạn)' : ''}`}</SingleLineName></span>
                 <strong className="knockout-score">{fixture?.series_best_of === 3 ? Number(fixture[`player${seat}_score`] || 0) : won ? '✓' : '–'}</strong>
               </div>;
             })}
@@ -92,7 +93,7 @@ export function KnockoutBracket({ fixtures, openingMatches, avatars, userId }: {
       <div className="relative z-10 flex min-w-0 flex-col gap-6 self-center" style={{gridColumn: rounds, gridRow: `1 / span ${gridRows}`}}>
         <KnockoutChampion final={final} avatars={avatars} userId={userId} />
         <article data-bracket-round={rounds} data-bracket-match="1" data-bracket-side="final" className="knockout-final-card">
-          <KnockoutFinal final={final} userId={userId} />
+          <KnockoutFinal final={final} userId={userId} showChampion={false} />
         </article>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Calendar, Crown, Loader2, Plus } from 'lucide-react';
 import { TournamentAvatar } from '../components/TournamentAvatar';
+import { SingleLineName } from '../components/SingleLineName';
 import { TournamentCreationModal, type TournamentCreatePayload } from '../components/TournamentCreationModal';
 import { TournamentEligibilityDialog } from '../components/TournamentEligibilityDialog';
 import { GroupKnockoutTournamentDetail } from '../components/GroupKnockoutTournamentDetail';
@@ -312,7 +313,7 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
                           <TournamentAvatar avatarId={player.avatar_id} avatarUrl={player.avatar_url} name={player.display_name} size="medium" />
                           <div className="min-w-0">
                             <p className={`mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${gold?'text-amber-200/75':'text-slate-400'}`}><Crown className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />{label}</p>
-                            <p className={`break-words text-sm font-bold [overflow-wrap:anywhere] ${gold?'text-yellow-400':'text-slate-300'}`}>{player.display_name}{player.id===user?.id?' (Bạn)':''}</p>
+                            <p className={`font-bold ${gold?'text-yellow-400':'text-slate-300'}`}><SingleLineName maxSize={14} minSize={10}>{`${player.display_name}${player.id===user?.id?' (Bạn)':''}`}</SingleLineName></p>
                           </div>
                         </div>
                       ))}
