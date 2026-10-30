@@ -1,19 +1,26 @@
 import { acquirePythonWorker, discardPythonWorker, releasePythonWorker } from './python-worker-pool.js';
 import { readFile } from 'node:fs/promises';
 import { fetchWASIFS } from '@runno/sandbox';
+import { encodePythonInput } from './python-input.js';
 
 const runtime = new URL('./langs/', import.meta.resolve('@runno/sandbox'));
 let baseFiles;
 let compiledPython;
-const wrapper = `import json, sys
+// Use the bundled CPython JSON accelerator directly. Importing the public json
+// package also initializes re/enum and their dependencies for every fresh VM.
+// The codec settings below match json.loads/json.dumps for our data-only wire.
+const wrapper = `import _json, marshal, sys
+def unsupported(value): raise TypeError('Not JSON serializable')
+encode = _json.make_encoder({}, unsupported, _json.encode_basestring_ascii, None, ':', ',', False, False, False)
 class Quiet:
     def write(self, text): return len(text)
     def flush(self): pass
 namespace = {}
 protocol_out = sys.stdout
+protocol_in = sys.stdin.buffer
 quiet = Quiet()
 def send(packet):
-    protocol_out.write(json.dumps(packet) + '\\n')
+    protocol_out.write(''.join(encode(packet, 0)) + '\\n')
     protocol_out.flush()
 try:
     sys.stdout = sys.stderr = quiet
@@ -24,9 +31,13 @@ try:
 except BaseException:
     send({'error': 'Cannot load Python bot'})
     sys.exit(1)
-for line in sys.stdin:
+while True:
     try:
-        request = json.loads(line)
+        header = protocol_in.read(4)
+        if len(header) != 4: break
+        size = int.from_bytes(header, 'little')
+        if size > 131064: break
+        request = marshal.loads(protocol_in.read(size))
         sys.stdout = sys.stderr = quiet
         move = move_fn(request['player'], request['state'])
         send({'move': move})
@@ -45,9 +56,9 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
   compiledPython ||= readFile(new URL('python-3.11.3.wasm', runtime)).then(bytes => WebAssembly.compile(bytes));
   const module = await compiledPython;
   const stdin = new SharedArrayBuffer(128 * 1024);
-  const view = new DataView(stdin);
+  const control = new Int32Array(stdin, 0, 1);
   const worker = acquirePythonWorker();
-  let pending, buffer = '', closed = false, closePromise, finishClose;
+  let pending, buffer = Buffer.alloc(0), closed = false, closePromise, finishClose;
   const fail = (error) => {
     if (pending) { clearTimeout(pending.timer); pending.reject(error); pending = null; }
   };
@@ -62,19 +73,20 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
   const onExit = () => onError(new Error('Bot sandbox stopped'));
   const onMessage = message => {
     if (message.type === 'stdout') {
-      buffer += message.text;
+      buffer = Buffer.concat([buffer, message.bytes]);
       if (buffer.length > 65536) {
         fail(new Error('Bot output exceeded its limit')); closed = true; void discardPythonWorker(worker); return;
       }
       let end;
-      while ((end = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+      while ((end = buffer.indexOf(10)) >= 0) {
+        const payload = buffer.subarray(0, end); buffer = buffer.subarray(end + 1);
         if (!pending) continue;
         try {
-          const packet = JSON.parse(line);
+          const packet = JSON.parse(payload.toString('utf8'));
+          if (!packet || typeof packet !== 'object') throw new Error('Invalid packet');
           const current = pending; pending = null; clearTimeout(current.timer);
           if (packet.error) current.reject(new Error(packet.error)); else current.resolve(packet);
-        } catch { fail(new Error('Bot returned invalid JSON')); }
+        } catch { fail(new Error('Bot returned invalid data')); }
       }
     } else if (message.type === 'crash' || message.type === 'result') {
       if (finishClose) { finishClose(message.type === 'result'); return; }
@@ -97,12 +109,13 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
   return {
     async move(player, state) {
       if (closed) throw new Error('Bot sandbox is closed');
-      const input = new TextEncoder().encode(JSON.stringify({ player, state }) + '\n');
-      if (input.length > stdin.byteLength - 4 || view.getInt32(0) !== 0) throw new Error('Invalid sandbox input');
+      if (pending) throw new Error('Bot already has a pending move');
+      const input = encodePythonInput({ player, state });
+      if (input.length > stdin.byteLength - 4 || Atomics.load(control, 0) !== 0) throw new Error('Invalid sandbox input');
       const response = wait(moveTimeoutMs);
       new Uint8Array(stdin, 4, input.length).set(input);
-      view.setInt32(0, input.length);
-      Atomics.notify(new Int32Array(stdin), 0);
+      Atomics.store(control, 0, input.length);
+      Atomics.notify(control, 0);
       return (await response).move;
     },
     async close() {
@@ -116,7 +129,7 @@ export async function createPythonBot(code, { moveTimeoutMs = 2000, bootTimeoutM
           void (reusable ? releasePythonWorker(worker) : discardPythonWorker(worker)).then(resolve);
         };
         // Stop the disposable VM before returning its Node thread to the pool.
-        view.setInt32(0,-1); Atomics.notify(new Int32Array(stdin),0);
+        Atomics.store(control,0,-1); Atomics.notify(control,0);
       });
       return closePromise;
     },

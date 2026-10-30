@@ -4,6 +4,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createPythonBot } from '../src/python-bot.js';
 import { playServerBotMatch } from '../src/server-bot-match.js';
+import { encodePythonInput } from '../src/python-input.js';
+import { createRequire } from 'node:module';
+import { verifyReplay } from '../src/replay.js';
+const { OTTGameEngine } = createRequire(import.meta.url)('../../shared/OTTGameEngine.js');
 
 // This asserts bounded memory, not desktop CPU speed; allow slower CI/laptops.
 test('repeated two-player sandboxes stay within the free server memory budget', { timeout: 90000 }, async () => {
@@ -122,4 +126,58 @@ test('server computes a game from the submitted Python and saves all moves', asy
   assert.ok([0, 1, 2].includes(result.winner));
   assert.ok(result.replay.moves.length > 0);
   assert.equal(result.replay.moves.length, result.moveCount);
+});
+
+test('binary input preserves the complete bot API, Unicode, scalars and independent containers', async () => {
+  const bot = await createPythonBot('def get_next_move(p,s): return s');
+  try {
+    for (const player of [1,2]) {
+      const state = OTTGameEngine.createBotGameState(OTTGameEngine.createGame(54321,9),player);
+      state.extra = { text: 'Tiếng Việt 🤖\u0000\n', decimals: [0.5,-2.75],
+        integers: [2147483648,-2147483649,Number.MAX_SAFE_INTEGER,-Number.MAX_SAFE_INTEGER],
+        nested: [{ same: 'paper' },{ same: 'paper' }], blank: '', empty: [], flags: [true,false,null] };
+      assert.deepEqual(await bot.move(player,state),state);
+    }
+  } finally { await bot.close(); }
+  const mutator = await createPythonBot(`def get_next_move(p,s):
+ s['a']['x']=99
+ return s['b']['x']
+`);
+  try { const shared={x:1}; assert.equal(await mutator.move(1,{a:shared,b:shared}),1); }
+  finally { await mutator.close(); }
+});
+
+test('input framing handles partial WASI reads and UTF-8 chunk boundaries', async () => {
+  const bot = await createPythonBot(`def get_next_move(p,s):
+ return {'text':s['text'][-4:],'length':len(s['text'])}
+`);
+  try {
+    const text='a'.repeat(8190)+'🤖ệ'.repeat(10000);
+    assert.deepEqual(await bot.move(1,{text}),{text:'🤖ệ🤖ệ',length:28190});
+  } finally { await bot.close(); }
+  assert.throws(()=>encodePythonInput({text:'x'.repeat(131072)}),/limit/);
+  const circular={}; circular.self=circular;
+  assert.throws(()=>encodePythonInput(circular),/deeply nested/);
+});
+
+test('a complete optimized Python game agrees with JS and its replay hashes verify', async () => {
+  const input={matchId:'transport-equivalence',seed:20261029,codes:Array(2).fill("def get_next_move(p,s): return s['validMoves'][0]")};
+  const python=await playServerBotMatch(input);
+  const js=await playServerBotMatch(input,async()=>({move:async(p,s)=>s.validMoves[0],close:async()=>{}}));
+  assert.equal(python.fault,null);
+  assert.deepEqual(python.replay.moves.map(m=>m.move),js.replay.moves.map(m=>m.move));
+  assert.equal(python.finalHash,js.finalHash);
+  assert.equal(verifyReplay(python.replay,input.seed,input.matchId).finalHash,python.finalHash);
+});
+
+test('oversized output, startup failure and move errors discard a sandbox cleanly', async () => {
+  await assert.rejects(createPythonBot('raise RuntimeError("bad startup")'),/load/);
+  for (const code of ['def get_next_move(p,s): return "x"*70000','def get_next_move(p,s): raise ValueError("bad move")']) {
+    const bot=await createPythonBot(code);
+    try { await assert.rejects(bot.move(1,{})); }
+    finally { await bot.close(); }
+  }
+  const healthy=await createPythonBot('def get_next_move(p,s): return {"from":1,"to":2}');
+  try { assert.deepEqual(await healthy.move(1,{}),{from:1,to:2}); }
+  finally { await healthy.close(); }
 });
